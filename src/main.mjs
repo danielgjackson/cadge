@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import { CdgParser } from './cdg-parser.mjs';
+import { BitmapGenerate } from './bmp.mjs';
 
 
 function run(inputFile) {
@@ -11,11 +12,28 @@ function run(inputFile) {
     };
     const parser = new CdgParser(data, parserOptions);
 
+    let lastReported = null;
     while (!parser.isEndOfStream()) {
         const packetNumber = parser.getPacketNumber();
         const time = parser.getTime();
         console.log('#' + packetNumber + ' @' + time + ' - ');
-        parser.parseNextPacket();
+        const changed = parser.parseNextPacket();
+        if (changed && (lastReported === null || Math.floor(time) != Math.floor(lastReported))) {
+            lastReported = Math.floor(time);
+            const baseFile = inputFile.replace(/\.cdg$/, '');
+            const buffer = parser.imageRender();
+            const bmpData = BitmapGenerate(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, false);
+            // Create output .bmp file name based on inputFile
+            const outputFile = baseFile + '-' + lastReported.toString().padStart(4, '0') + '.bmp';
+            fs.writeFileSync(outputFile, bmpData);
+
+            if (false && lastReported % 10 == 0) {
+                const palette = parser.paletteDump();
+                const image = parser.imageDump();
+                const dumpFile = baseFile + '-' + lastReported.toString().padStart(4, '0') + '.txt';
+                fs.writeFileSync(dumpFile, palette + '\n' + image);
+            }
+        }
     }
 
     return 0;

@@ -53,6 +53,8 @@ export class CdgParser {
     static CDG_HEIGHT = 216;
     static CDG_TILE_WIDTH = 6;
     static CDG_TILE_HEIGHT = 12;
+    static CDG_BORDER_WIDTH = CdgParser.CDG_TILE_WIDTH;
+    static CDG_BORDER_HEIGHT = CdgParser.CDG_TILE_HEIGHT;
 
     static DATA_MASK = 0x3f;
     static DATA_OFFSET = 4;
@@ -98,6 +100,25 @@ export class CdgParser {
         this.palette[index * 4 + 3] = 0xff;
     }
 
+    setPaletteTransparent(index) {
+        for (let i = 0; i < CdgParser.CDG_COLORS; i++) {
+            const value = (i == index) ? 0x00 : 0xff;
+            this.palette[i * 4 + 3] = value;
+        }
+    }
+
+    paletteDump() {
+        const colors = [];
+        for (let i = 0; i < CdgParser.CDG_COLORS; i++) {
+            const r = this.palette[i * 4 + 0];
+            const g = this.palette[i * 4 + 1];
+            const b = this.palette[i * 4 + 2];
+            const color = '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0');
+            colors.push(color)
+        }
+        return colors;
+    }
+
     getPacketNumber() {
         return this.packetNumber;
     }
@@ -127,6 +148,40 @@ export class CdgParser {
         } else {
             this.image[i] ^= index;
         }
+    }
+
+    imageRender() {
+        if (!this.renderBuffer) {
+            this.renderBuffer = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT * 4);
+        }
+        for (let y = 0; y < CdgParser.CDG_HEIGHT; y++) {
+            for (let x = 0; x < CdgParser.CDG_WIDTH; x++) {
+                let index;
+                if (y < CdgParser.CDG_BORDER_HEIGHT || y >= CdgParser.CDG_HEIGHT - CdgParser.CDG_BORDER_HEIGHT || x < CdgParser.CDG_BORDER_WIDTH || x >= CdgParser.CDG_WIDTH - CdgParser.CDG_BORDER_WIDTH) {
+                    index = this.borderColor;
+                } else {
+                    const i = y * CdgParser.CDG_WIDTH + x;
+                    index = this.image[i];
+                }
+                const j = (y * CdgParser.CDG_WIDTH + x) * 4;
+                this.renderBuffer[j + 0] = this.palette[index * 4 + 0];
+                this.renderBuffer[j + 1] = this.palette[index * 4 + 1];
+                this.renderBuffer[j + 2] = this.palette[index * 4 + 2];
+                this.renderBuffer[j + 3] = this.palette[index * 4 + 3];
+            }
+        }
+        return this.renderBuffer;
+    }
+
+    imageDump() {
+        let output = '';
+        for (let y = 0; y < CdgParser.CDG_HEIGHT; y++) {
+            for (let x = 0; x < CdgParser.CDG_WIDTH; x++) {
+                const i = y * CdgParser.CDG_WIDTH + x;
+                output += this.image[i].toString(16);
+            }
+        }
+        return output;
     }
 
     // Parse the next packet
@@ -167,23 +222,24 @@ export class CdgParser {
                 changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_TILE_BLOCK || instruction == CdgParser.INSTRUCTION_TILE_BLOCK_XOR) {
                 const doXor = instruction == CdgParser.INSTRUCTION_TILE_BLOCK_XOR;
-                console.log('INSTRUCTION_TILE_BLOCK ' + (doXor ? 'XOR' : ' Normal'));
                 const colors = [
                     packet[CdgParser.DATA_OFFSET + 0],
                     packet[CdgParser.DATA_OFFSET + 1],
                 ];
                 const row = packet[CdgParser.DATA_OFFSET + 2];
                 const column = packet[CdgParser.DATA_OFFSET + 3];
+                console.log('INSTRUCTION_TILE_BLOCK ' + (doXor ? 'XOR' : ' Normal') + ' @(' + column + ',' + row + ') [' + colors[0] + ',' + colors[1] + ']');
                 // Parse scan lines
                 for (let r = 0; r < CdgParser.CDG_TILE_HEIGHT; r++) {
                     const lineData = packet[CdgParser.DATA_OFFSET + 4 + r];
                     const y = row * CdgParser.CDG_TILE_HEIGHT + r;
                     for (let c = 0; c < CdgParser.CDG_TILE_WIDTH; c++) {
-                        const colorValue = lineData & (1 << (CdgParser.CDG_TILE_WIDTH - 1 - c));
+                        const colorValue = (lineData >> (CdgParser.CDG_TILE_WIDTH - 1 - c)) & 1;
                         const x = column * CdgParser.CDG_TILE_WIDTH + c;
                         const color = colors[colorValue];
                         this.imagePixel(x, y, color, doXor);
                     }
+                    console.log('> @(' + (column * CdgParser.CDG_TILE_WIDTH) + ',' + y + ') ' + lineData.toString(2).padStart(6, '0').replaceAll('0', '.').replaceAll('1', '#'));
                 }
                 changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_SCROLL_PRESET || instruction == CdgParser.INSTRUCTION_SCROLL_COPY) {
@@ -195,7 +251,7 @@ export class CdgParser {
             } else if (instruction == CdgParser.INSTRUCTION_DEFINE_TRANSPARENT) {
                 const color = packet[CdgParser.DATA_OFFSET + 0];
                 console.log('INSTRUCTION_DEFINE_TRANSPARENT ' + color);
-                this.transparentColor = color;
+                this.setPaletteTransparent(color);
                 changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_LOWER || instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER) {
                 const offset = instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER ? 8 : 0;
@@ -212,6 +268,7 @@ export class CdgParser {
                     const green = (g << 4) | g;
                     const blue = (b << 4) | b;
                     this.setPaletteEntry(offset + i, red, green, blue);
+                    console.log('> @' + (i + offset) + ' #' + red.toString(16).padStart(2, '0') + green.toString(16).padStart(2, '0') + blue.toString(16).padStart(2, '0'));
                 }
                 changes = true;
             } else {
