@@ -36,7 +36,7 @@ The aim is to provide additional layers that to try to understand when lines of 
 Test:
 
 ```
-npm start _local/data/test.cdg > test.log
+node src/main.mjs _local/data/test.cdg --term --rate 2
 ```
 
 -->

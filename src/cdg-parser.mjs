@@ -264,8 +264,8 @@ export class CdgParser {
                 changes = {
                     x: column * CdgParser.CDG_TILE_WIDTH,
                     y: row * CdgParser.CDG_TILE_HEIGHT,
-                    width: (column + 1) * CdgParser.CDG_TILE_WIDTH - 1,
-                    height: (row + 1) * CdgParser.CDG_TILE_HEIGHT - 1,
+                    width: CdgParser.CDG_TILE_WIDTH,
+                    height: CdgParser.CDG_TILE_HEIGHT,
                 };
             } else if (instruction == CdgParser.INSTRUCTION_SCROLL_PRESET || instruction == CdgParser.INSTRUCTION_SCROLL_COPY) {
                 const doCopy = instruction == CdgParser.INSTRUCTION_SCROLL_COPY;
@@ -309,18 +309,22 @@ export class CdgParser {
 
         // Normalize changes as a rectangle
         let changeRect = changes;
-        if (changeRect === null) {
+        if (changes === null) {
             changeRect = { x: null, y: null, width: null, height: null };
-        } else if (changeRect === true) {
+        } else if (changes === true) {
             changeRect = { x: 0, y: 0, width: CdgParser.CDG_WIDTH, height: CdgParser.CDG_HEIGHT };
         }
 
         // Accumulate change trackers
-        for (const tracker of changeTrackers) {
-            if (changeRect.x !== null) tracker.x = Math.min(tracker.x ?? changeRect.x, changeRect.x);
-            if (changeRect.y !== null) tracker.y = Math.min(tracker.y ?? changeRect.y, changeRect.y);
-            if (changeRect.width !== null) tracker.width = Math.max(tracker.width ?? changeRect.width, changeRect.width);
-            if (changeRect.height !== null) tracker.height = Math.max(tracker.height ?? changeRect.height, changeRect.height);
+        if (changes) {
+            for (const tracker of changeTrackers) {
+                const x2 = (tracker.x ?? changeRect.x) + (tracker.width ?? changeRect.width);
+                const y2 = (tracker.y ?? changeRect.y) + (tracker.height ?? changeRect.height);
+                if (changeRect.x !== null) tracker.x = Math.min(tracker.x ?? changeRect.x, changeRect.x);
+                if (changeRect.y !== null) tracker.y = Math.min(tracker.y ?? changeRect.y, changeRect.y);
+                if (changeRect.width !== null) { tracker.width = Math.max(x2, changeRect.x + changeRect.width) - tracker.x; }
+                if (changeRect.height !== null) { tracker.height = Math.max(y2, changeRect.y + changeRect.height) - tracker.y; }
+            }
         }
         return changes;
     }

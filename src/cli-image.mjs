@@ -99,36 +99,26 @@ export function renderText(data, width, height, span, blockType)
 }
 
 
-export function outputImageTerminalLarge(color, width, height, character = '█') { // '██', '▓▓', '▒▒', '░░'
-    for (let y = 0; y < height; y++) {
-        const lineParts = [];
-        for (let x = 0; x < width; x++) {
-            const r = color[(y * width + x) * 4 + 0];
-            const g = color[(y * width + x) * 4 + 1];
-            const b = color[(y * width + x) * 4 + 2];
-            lineParts.push(`\x1B[38;2;${r};${g};${b}m${character}`);
-        }
-        lineParts.push('\x1B[0m');
-        console.log(lineParts.join(''));
-    }
-}
-
-export function outputImageTerminalSmall(color, width, height, reset = false, rectangle = null) {
+export function renderAnsiImage(color, width, height, reset = false, rectangle = null) {
+    const displayParts = [];
     const character = '▀';
+
+    //if (reset) { displayParts.push('\x1B[s'); } // Save cursor
+    //if (reset) { displayParts.push('\x1B7'); } // Save cursor
+
     if (rectangle == null || rectangle.x == null) {
         rectangle = { x: 0, y: 0, width, height };
     }
+    if (rectangle.y & 1) {
+        rectangle.y--;
+        rectangle.height++;
+    }
     if (rectangle.y > 0) {
-        if (rectangle.y > 1) {
-            console.log('\x1B[' + (rectangle.y - 1) + 'B');
-        } else {
-            console.log('');
-        }
+        displayParts.push('\x1B[' + (Math.floor(rectangle.y / 2)) + 'B');
     }
     for (let y = rectangle.y; y < rectangle.y + rectangle.height; y += 2) {
-        const lineParts = [];
         if (rectangle.x > 0) {
-            lineParts.push('\x1B[' + (rectangle.x) + 'C');
+            displayParts.push('\x1B[' + (rectangle.x) + 'C');
         }
         for (let x = rectangle.x; x < rectangle.x + rectangle.width; x++) {
             let c;
@@ -137,21 +127,22 @@ export function outputImageTerminalSmall(color, width, height, reset = false, re
                 const r = color[((y + 1) * width + x) * 4 + 0];
                 const g = color[((y + 1) * width + x) * 4 + 1];
                 const b = color[((y + 1) * width + x) * 4 + 2];
-                lineParts.push(`\x1B[48;2;${r};${g};${b}m`);
+                displayParts.push(`\x1B[48;2;${r};${g};${b}m`);
             } else {
-                lineParts.push('\x1B[0m');  // reset (for background)
+                displayParts.push('\x1B[0m');  // reset (for background)
             }
             // Upper/foreground color and character
             const r = color[(y * width + x) * 4 + 0];
             const g = color[(y * width + x) * 4 + 1];
             const b = color[(y * width + x) * 4 + 2];
-            lineParts.push(`\x1B[38;2;${r};${g};${b}m${character}`);
+            displayParts.push(`\x1B[38;2;${r};${g};${b}m${character}`);
         }
-        lineParts.push('\x1B[0m');
-        console.log(lineParts.join(''));
+        displayParts.push('\x1B[0m\n');
     }
 
-    if (reset) {
-        console.log('\x1B[' + (rectangle.y + rectangle.height + 1) + 'A');
-    }
+    if (reset) { displayParts.push('\x1B[' + Math.ceil((rectangle.y + rectangle.height) / 2) + 'A'); } // Return cursor to top
+    //if (reset) { displayParts.push('\x1B8'); } // Restore cursor
+    //if (reset) { displayParts.push('\x1B[u'); } // Restore cursor
+
+    return displayParts.join('');
 }

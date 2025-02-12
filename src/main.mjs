@@ -3,23 +3,25 @@
 import fs from 'node:fs';
 import { CdgParser } from './cdg-parser.mjs';
 import { BitmapGenerate } from './bmp.mjs';
-import { outputImageTerminalSmall } from './cli-image.mjs';
+import { renderAnsiImage } from './cli-image.mjs';
 
 
-function run(inputFile) {
-    console.log('Processing: ' + inputFile);
+async function run(inputFile, options) {
+    console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
     const data = fs.readFileSync(inputFile);
-    const parserOptions = {
-    };
-    const parser = new CdgParser(data, parserOptions);
-
+    const parser = new CdgParser(data, options);
+    
     const reportInterval = 0;
     let lastReported = null;
     let changeTrackCli = {};
+    const considerPackets = 30;
+    const startTime = Date.now();
     while (!parser.isEndOfStream()) {
         const packetNumber = parser.getPacketNumber();
         const time = parser.getTime();
         const changed = parser.parseNextPacket([changeTrackCli]);
+
+        /*
         if (reportInterval && changed && (lastReported === null || Math.floor(time) >= Math.floor(lastReported + reportInterval))) {
             lastReported = Math.floor(time);
             const baseFile = inputFile.replace(/\.cdg$/, '');
@@ -36,14 +38,22 @@ function run(inputFile) {
                 fs.writeFileSync(dumpFile, palette + '\n' + image);
             }
         }
+        */
 
-        if (true) {
+        if (options.term && (packetNumber % considerPackets) == 0) {
             if (changeTrackCli.x != null) {
                 const buffer = parser.imageRender(changeTrackCli);
-// HACK: Fix partial output
-changeTrackCli = {};
-                outputImageTerminalSmall(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
+                const text = renderAnsiImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
+                process.stdout.write(text);
                 changeTrackCli = {};
+            }
+
+            const now = Date.now();
+            const positionCurrent = time * 1000;
+            const positionExpected = (now - startTime) * options.rate;
+            const delay = positionCurrent - positionExpected;
+            if (delay > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay / options.rate));
             }
         }
     
@@ -52,13 +62,21 @@ changeTrackCli = {};
     return 0;
 }
 
-function main(args) {
+async function main(args) {
     let inputFile = null;
     let positional = 0;
     let help = false;
+    const options = {
+        term: false,
+        rate: 1,
+    };
     for (let i = 0; i < args.length; i++) {
-        if (args[i] === '--help') {
+        if (args[i] == '--help') {
             help = true;
+        } else if (args[i] == '--term') {
+            options.term = true;
+        } else if (args[i] == '--rate') {
+            options.rate = parseFloat(args[++i]);
         } else if (args[i].startsWith('-')) {
             console.error('ERROR: Unknown option: ' + args[i]);
             help = true;
@@ -83,8 +101,8 @@ function main(args) {
         console.log('');
         return 1;
     }
-    return run(inputFile);
+    return await run(inputFile, options);
 }
 
 // From CLI, run with arguments and return exit code
-process.exit(main(process.argv.slice(2)));
+process.exit(await main(process.argv.slice(2)));
