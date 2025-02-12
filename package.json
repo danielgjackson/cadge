@@ -1,0 +1,21 @@
+{
+  "name": "cadge",
+  "version": "1.0.0",
+  "description": "CaDGe - .CDG file Parser and Lyric Extractor",
+  "module": "src/cadge.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/main.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielgjackson/cadge.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/danielgjackson/cadge/issues"
+  },
+  "homepage": "https://github.com/danielgjackson/cadge#readme"
+}
