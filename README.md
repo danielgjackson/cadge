@@ -23,12 +23,20 @@ The aim is to provide additional layers that to try to understand when lines of 
   * WebVTT
     * https://en.wikipedia.org/wiki/WebVTT
 
+* CD+EG Extended Graphics, from: https://extended.graphics/#tech
+  * Adds an extra video buffer, doubling the video memory
+  * This can be used for full 8 bit (256 color) graphics, or the two buffers can be used for independent 4 bit (16 color) images. 
+  * When used independently, one buffer can written while the other is displaying, then they can be instantly switched. 
+  * There is also a mode that allows the two buffers to be blended together, this can produce a dissolve effect, or one layer can be scrolled on a stationary background.
+  * "Line graphics mode"?
+
+
 <!--
 
 Test:
 
 ```
-npm start _local/data/test.cdg
+npm start _local/data/test.cdg > test.log
 ```
 
 -->

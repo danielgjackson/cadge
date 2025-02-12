@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import { CdgParser } from './cdg-parser.mjs';
 import { BitmapGenerate } from './bmp.mjs';
+import { outputImageTerminalSmall } from './cli-image.mjs';
 
 
 function run(inputFile) {
@@ -12,13 +13,14 @@ function run(inputFile) {
     };
     const parser = new CdgParser(data, parserOptions);
 
+    const reportInterval = 0;
     let lastReported = null;
+    let changeTrackCli = {};
     while (!parser.isEndOfStream()) {
         const packetNumber = parser.getPacketNumber();
         const time = parser.getTime();
-        console.log('#' + packetNumber + ' @' + time + ' - ');
-        const changed = parser.parseNextPacket();
-        if (changed && (lastReported === null || Math.floor(time) != Math.floor(lastReported))) {
+        const changed = parser.parseNextPacket([changeTrackCli]);
+        if (reportInterval && changed && (lastReported === null || Math.floor(time) >= Math.floor(lastReported + reportInterval))) {
             lastReported = Math.floor(time);
             const baseFile = inputFile.replace(/\.cdg$/, '');
             const buffer = parser.imageRender();
@@ -34,6 +36,17 @@ function run(inputFile) {
                 fs.writeFileSync(dumpFile, palette + '\n' + image);
             }
         }
+
+        if (true) {
+            if (changeTrackCli.x != null) {
+                const buffer = parser.imageRender(changeTrackCli);
+// HACK: Fix partial output
+changeTrackCli = {};
+                outputImageTerminalSmall(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
+                changeTrackCli = {};
+            }
+        }
+    
     }
 
     return 0;

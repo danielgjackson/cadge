@@ -41,6 +41,7 @@ CD+G system:
 */
 
 const defaultOptions = {
+    verbose: false,
 }
 
 export class CdgParser {
@@ -150,12 +151,15 @@ export class CdgParser {
         }
     }
 
-    imageRender() {
+    imageRender(rectangle) {
         if (!this.renderBuffer) {
             this.renderBuffer = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT * 4);
         }
-        for (let y = 0; y < CdgParser.CDG_HEIGHT; y++) {
-            for (let x = 0; x < CdgParser.CDG_WIDTH; x++) {
+        if (rectangle == null || rectangle.x == null) {
+            rectangle = { x: 0, y: 0, width: CdgParser.CDG_WIDTH, height: CdgParser.CDG_HEIGHT };
+        }
+        for (let y = rectangle.y; y < rectangle.y + rectangle.height; y++) {
+            for (let x = rectangle.x; x < rectangle.x + rectangle.width; x++) {
                 let index;
                 if (y < CdgParser.CDG_BORDER_HEIGHT || y >= CdgParser.CDG_HEIGHT - CdgParser.CDG_BORDER_HEIGHT || x < CdgParser.CDG_BORDER_WIDTH || x >= CdgParser.CDG_WIDTH - CdgParser.CDG_BORDER_WIDTH) {
                     index = this.borderColor;
@@ -164,10 +168,21 @@ export class CdgParser {
                     index = this.image[i];
                 }
                 const j = (y * CdgParser.CDG_WIDTH + x) * 4;
-                this.renderBuffer[j + 0] = this.palette[index * 4 + 0];
-                this.renderBuffer[j + 1] = this.palette[index * 4 + 1];
-                this.renderBuffer[j + 2] = this.palette[index * 4 + 2];
-                this.renderBuffer[j + 3] = this.palette[index * 4 + 3];
+                let r = this.palette[index * 4 + 0];
+                let g = this.palette[index * 4 + 1];
+                let b = this.palette[index * 4 + 2];
+                let a = this.palette[index * 4 + 3];
+                if (false && a < 0x80) {       // Checkerboard transparency
+                    if (((x ^ y) >> 0) & 1) {
+                        r = g = b = 0x33;
+                    } else {
+                        r = g = b = 0xcc;
+                    }
+                }
+                this.renderBuffer[j + 0] = r;
+                this.renderBuffer[j + 1] = g;
+                this.renderBuffer[j + 2] = b;
+                this.renderBuffer[j + 3] = a;
             }
         }
         return this.renderBuffer;
@@ -185,11 +200,14 @@ export class CdgParser {
     }
 
     // Parse the next packet
-    parseNextPacket() {
+    parseNextPacket(changeTrackers = []) {
         if (this.isEndOfStream()) {
+            if (this.options.verbose) console.log('--- END OF STREAM');
             return null;
         }
-        let changes = false;
+        let changes = null;
+
+        if (this.options.verbose) console.log('#' + this.getPacketNumber() + ' @' + this.getTime() + ' - ');
 
         // Extract packet
         const offset = this.byteOffset();
@@ -201,23 +219,25 @@ export class CdgParser {
 
         const command = packet[0];
         if (command == CdgParser.COMMAND_NONE) {
-            //console.log('COMMAND_NONE');
+            //if (this.options.verbose) console.log('COMMAND_NONE');
         } else
         if (command == CdgParser.COMMAND_CDG) {
-            //console.log('COMMAND_CDG');
+            //if (this.options.verbose) console.log('COMMAND_CDG');
             const instruction = packet[1];
             if (instruction == CdgParser.INSTRUCTION_MEMORY_PRESET) {
                 const color = packet[CdgParser.DATA_OFFSET + 0];
                 const repeat = packet[CdgParser.DATA_OFFSET + 1];
-                console.log('INSTRUCTION_MEMORY_PRESET ' + color + ' ' + repeat);
+                if (this.options.verbose) console.log('INSTRUCTION_MEMORY_PRESET ' + color + ' ' + repeat);
+                //if (this.options.verbose) console.log('... ' + packet[CdgParser.DATA_OFFSET + 2] + ', ' + packet[CdgParser.DATA_OFFSET + 3]);
                 // Only follow the first command, and not repeats (assumes no errors in stream)
                 if (repeat == 0) {
                     this.imageClear(color);
+                    changes = true;
                 }
-                changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_BORDER_PRESET) {
                 const color = packet[CdgParser.DATA_OFFSET + 0];
-                console.log('INSTRUCTION_BORDER_PRESET ' + color);
+                if (this.options.verbose) console.log('INSTRUCTION_BORDER_PRESET ' + color);
+                //if (this.options.verbose) console.log('... ' + packet[CdgParser.DATA_OFFSET + 1] + ', ' + packet[CdgParser.DATA_OFFSET + 2] + ', ' + packet[CdgParser.DATA_OFFSET + 3]);
                 this.borderColor = color;
                 changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_TILE_BLOCK || instruction == CdgParser.INSTRUCTION_TILE_BLOCK_XOR) {
@@ -228,7 +248,7 @@ export class CdgParser {
                 ];
                 const row = packet[CdgParser.DATA_OFFSET + 2];
                 const column = packet[CdgParser.DATA_OFFSET + 3];
-                console.log('INSTRUCTION_TILE_BLOCK ' + (doXor ? 'XOR' : ' Normal') + ' @(' + column + ',' + row + ') [' + colors[0] + ',' + colors[1] + ']');
+                if (this.options.verbose) console.log('INSTRUCTION_TILE_BLOCK ' + (doXor ? 'XOR' : ' Normal') + ' @(' + column + ',' + row + ') [' + colors[0] + ',' + colors[1] + ']');
                 // Parse scan lines
                 for (let r = 0; r < CdgParser.CDG_TILE_HEIGHT; r++) {
                     const lineData = packet[CdgParser.DATA_OFFSET + 4 + r];
@@ -239,23 +259,29 @@ export class CdgParser {
                         const color = colors[colorValue];
                         this.imagePixel(x, y, color, doXor);
                     }
-                    console.log('> @(' + (column * CdgParser.CDG_TILE_WIDTH) + ',' + y + ') ' + lineData.toString(2).padStart(6, '0').replaceAll('0', '.').replaceAll('1', '#'));
+                    if (this.options.verbose) console.log('> @(' + (column * CdgParser.CDG_TILE_WIDTH) + ',' + y + ') ' + lineData.toString(2).padStart(6, '0').replaceAll('0', '.').replaceAll('1', '#'));
                 }
-                changes = true;
+                changes = {
+                    x: column * CdgParser.CDG_TILE_WIDTH,
+                    y: row * CdgParser.CDG_TILE_HEIGHT,
+                    width: (column + 1) * CdgParser.CDG_TILE_WIDTH - 1,
+                    height: (row + 1) * CdgParser.CDG_TILE_HEIGHT - 1,
+                };
             } else if (instruction == CdgParser.INSTRUCTION_SCROLL_PRESET || instruction == CdgParser.INSTRUCTION_SCROLL_COPY) {
                 const doCopy = instruction == CdgParser.INSTRUCTION_SCROLL_COPY;
-                console.log('INSTRUCTION_SCROLL_PRESET ' + (doCopy ? 'COPY' : ' Normal'));
+                if (this.options.verbose) console.log('INSTRUCTION_SCROLL_PRESET ' + (doCopy ? 'COPY' : ' Normal'));
                 // TODO: Scroll - color & 0x0f, hScroll (sCmd=(hScroll&0x30)>>4 where 0=no scroll, 1=6 right, 2=6 left; hOffset=(hScroll&0x07) values 0-5), vScroll (sCmd=(hScroll&0x30)>>4 where 0=no scroll, 1=12 down, 2=12 up;  vOffset=(vScroll&0x0f) values 0-11)
-                console.log('WARNING: Scroll not implemented');
-                changes = true;
+                if (this.options.verbose) console.log('WARNING: Scroll not implemented');
+                //changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_DEFINE_TRANSPARENT) {
                 const color = packet[CdgParser.DATA_OFFSET + 0];
-                console.log('INSTRUCTION_DEFINE_TRANSPARENT ' + color);
+                if (this.options.verbose) console.log('INSTRUCTION_DEFINE_TRANSPARENT ' + color);
+                //if (this.options.verbose) console.log('... ' + packet[CdgParser.DATA_OFFSET + 1] + ', ' + packet[CdgParser.DATA_OFFSET + 2] + ', ' + packet[CdgParser.DATA_OFFSET + 3]);
                 this.setPaletteTransparent(color);
                 changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_LOWER || instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER) {
                 const offset = instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER ? 8 : 0;
-                console.log('INSTRUCTION_LOAD_COLOR_TABLE ' + offset + '-' + (offset + 7));
+                if (this.options.verbose) console.log('INSTRUCTION_LOAD_COLOR_TABLE ' + offset + '-' + (offset + 7));
                 for (let i = 0; i < 8; i++) {
                     const high = packet[CdgParser.DATA_OFFSET + i * 2 + 0];
                     const low = packet[CdgParser.DATA_OFFSET + i * 2 + 1];
@@ -268,18 +294,34 @@ export class CdgParser {
                     const green = (g << 4) | g;
                     const blue = (b << 4) | b;
                     this.setPaletteEntry(offset + i, red, green, blue);
-                    console.log('> @' + (i + offset) + ' #' + red.toString(16).padStart(2, '0') + green.toString(16).padStart(2, '0') + blue.toString(16).padStart(2, '0'));
+                    if (this.options.verbose) console.log('> @' + (i + offset) + ' #' + red.toString(16).padStart(2, '0') + green.toString(16).padStart(2, '0') + blue.toString(16).padStart(2, '0'));
                 }
                 changes = true;
             } else {
-                console.log('WARNING: Unknown CDG instruction: ' + instruction);
+                if (this.options.verbose) console.log('WARNING: Unknown CDG instruction: ' + instruction);
             }
 
         } else {
-            console.log('WARNING: Unknown subcode command: ' + command);
+            if (this.options.verbose) console.log('WARNING: Unknown subcode command: ' + command);
         }
 
         this.packetNumber++;
+
+        // Normalize changes as a rectangle
+        let changeRect = changes;
+        if (changeRect === null) {
+            changeRect = { x: null, y: null, width: null, height: null };
+        } else if (changeRect === true) {
+            changeRect = { x: 0, y: 0, width: CdgParser.CDG_WIDTH, height: CdgParser.CDG_HEIGHT };
+        }
+
+        // Accumulate change trackers
+        for (const tracker of changeTrackers) {
+            if (changeRect.x !== null) tracker.x = Math.min(tracker.x ?? changeRect.x, changeRect.x);
+            if (changeRect.y !== null) tracker.y = Math.min(tracker.y ?? changeRect.y, changeRect.y);
+            if (changeRect.width !== null) tracker.width = Math.max(tracker.width ?? changeRect.width, changeRect.width);
+            if (changeRect.height !== null) tracker.height = Math.max(tracker.height ?? changeRect.height, changeRect.height);
+        }
         return changes;
     }
     
