@@ -11,15 +11,15 @@ The aim is to provide additional layers that to try to understand when lines of 
 
 Rough design for lyric analysis:
 
-* Track last clear index as the background index.
+* [x] Track last clear index as the background index.
 
-* On clear and palette change, flag colour indices as "background" colour (luminance similarity to the last cleared index), and determine which indices are equivalent to one another (almost identical colours).
+* [x] On clear and palette change, flag colour indices as "background" colour (luminance similarity to the last cleared index), and determine which indices are equivalent to one another (almost identical colours).
 
-* On row changes (tile writes and clear):
+* [ ] On row changes (tile writes and clear):
   * Record the total number of foreground pixels, and the min and max of any foreground pixels.
   * Count the number of pixel changes: "del": foreground to background, "add": background to foreground, "change": foreground to another (non-equivalent) foreground colour. For each category, remember the minimum and maximum X value for the change.
 
-* Calculate current row groups:
+* [ ] Calculate current row groups:
   * Each row with non-zero foreground pixels is a group.
   * Dilate (e.g. 1-3 pixels) either side to expand the rows
   * Adjacent rows are part of the same group
@@ -27,18 +27,18 @@ Rough design for lyric analysis:
   * Previous groups that no longer exist, or now have more than one matching current group (split) are treated as "removed" (and any current groups unmatched) - removing a group puts it into the "removed" state to force a transition out of any current state, before being deleted.
   * Unmatched groups are treated as new, "added" groups
 
-* Each group tracks its current state with start/end timestamps for each state enter/leave, and horizontal positions for when the state changed, and the time of the last relevant operation for that state: "writing" for any "add" operations, "erasing" for any "del" operations, "progress" for any "change" operations. To help lyric analysis: each group's min/max rows are recorded, and the total number of clear operations performed before the group was created.
+* [ ] Each group tracks its current state with start/end timestamps for each state enter/leave, and horizontal positions for when the state changed, and the time of the last relevant operation for that state: "writing" for any "add" operations, "erasing" for any "del" operations, "progress" for any "change" operations. To help lyric analysis: each group's min/max rows are recorded, and the total number of clear operations performed before the group was created.
 
-* On group exit from "writing" state, the rows are captured in monochrome as background/non-background, and the min/max foreground X positions calculated. If the minimum width/height is too small, or (optionally) if the span does not cover the centre line, the group is ignored. OCR is performed on the text, and the horizontal start/end of each word is recorded.
+* [ ] On group exit from "writing" state, the rows are captured in monochrome as background/non-background, and the min/max foreground X positions calculated. If the minimum width/height is too small, or (optionally) if the span does not cover the centre line, the group is ignored. OCR is performed on the text, and the horizontal start/end of each word is recorded.
 
-* On entering, updates to, and exit from, the "progress" state: the horizontal progress is increased monotonically and timestamps tracked between each word (exiting gives a timestamp for the final word).
+* [ ] On entering, updates to, and exit from, the "progress" state: the horizontal progress is increased monotonically and timestamps tracked between each word (exiting gives a timestamp for the final word).
 
-* On stream end, any existing groups are "removed", and lyric analysis can be performed.
+* [ ] On stream end, any existing groups are "removed", and lyric analysis can be performed.
   * Detect initial lead-in/progress markers (e.g. '>'/'»' or similar to '|||||') and mark as a progress element.
   * Possibly: detect instructions (e.g. in parentheses, or initial "M:"/"F:"/"D:") and treat appropriately.
   * Lyrics are analysed to decide which rows could be merged (previous line recent, placed above, and no ending punctuation; and current line doesn't begin with a capital letter), or split (at ending punctuation).
-  
-* Lyrics output to e.g. an .LRC file.
+
+* [ ] Lyrics output to e.g. an .LRC file.
 
 
 

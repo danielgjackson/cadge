@@ -81,11 +81,15 @@ export class CdgParser {
 
         // Decoded state
         this.borderColor = null;
-        this.transparentColor = null;
+        this.backgroundColor = null;    // Track last clear color as a good indicator of "background"
         this.palette = new Uint8Array(CdgParser.CDG_COLORS * 4);
         // Store as 1 byte per pixel, but only the lower 4 bits are used for the color index
         this.image = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT);
         this.previousImage = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT);    // Used for scrolling
+        // To aid tile change tracking
+        this.oldTile = new Uint8Array(CdgParser.CDG_TILE_WIDTH * CdgParser.CDG_TILE_HEIGHT);
+        this.newTile = new Uint8Array(CdgParser.CDG_TILE_WIDTH * CdgParser.CDG_TILE_HEIGHT);
+        // Screen offset
         this.xOffset = 0;
         this.yOffset = 0;
 
@@ -103,6 +107,16 @@ export class CdgParser {
         this.palette[index * 4 + 1] = g;
         this.palette[index * 4 + 2] = b;
         this.palette[index * 4 + 3] = 0xff;
+    }
+
+    getPaletteEntry(index) {
+        if (index == null) return { r: 0x00, g: 0x00, b: 0x00, a: 0x00 };
+        return {
+            r: this.palette[index * 4 + 0],
+            g: this.palette[index * 4 + 1],
+            b: this.palette[index * 4 + 2],
+            a: this.palette[index * 4 + 3],
+        };
     }
 
     setPaletteAlpha(index, value) {
@@ -143,15 +157,6 @@ export class CdgParser {
         }
     }
 
-    imagePixel(x, y, index, xor = false) {
-        const i = y * CdgParser.CDG_WIDTH + x;
-        if (!xor) {
-            this.image[i] = index;
-        } else {
-            this.image[i] ^= index;
-        }
-    }
-
     imageRender(rectangle) {
         if (!this.renderBuffer) {
             this.renderBuffer = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT * 4);
@@ -169,21 +174,12 @@ export class CdgParser {
                     index = this.image[i];
                 }
                 const j = (y * CdgParser.CDG_WIDTH + x) * 4;
-                let r = this.palette[index * 4 + 0];
-                let g = this.palette[index * 4 + 1];
-                let b = this.palette[index * 4 + 2];
-                let a = this.palette[index * 4 + 3];
-                if (false && a < 0x80) {       // Checkerboard transparency
-                    if (((x ^ y) >> 0) & 1) {
-                        r = g = b = 0x33;
-                    } else {
-                        r = g = b = 0xcc;
-                    }
-                }
-                this.renderBuffer[j + 0] = r;
-                this.renderBuffer[j + 1] = g;
-                this.renderBuffer[j + 2] = b;
-                this.renderBuffer[j + 3] = a;
+                let rgb = this.getPaletteEntry(index);
+
+                this.renderBuffer[j + 0] = rgb.r;
+                this.renderBuffer[j + 1] = rgb.g;
+                this.renderBuffer[j + 2] = rgb.b;
+                this.renderBuffer[j + 3] = rgb.a;
             }
         }
         return this.renderBuffer;
@@ -201,30 +197,38 @@ export class CdgParser {
     }
 
     // Parse the next packet
-    parseNextPacket(changeTrackers = []) {
+    parseNextPacket() {
         if (this.isEndOfStream()) {
             if (this.options.verbose) console.log('--- END OF STREAM');
             return null;
         }
         let changes = null;
 
-        if (this.options.verbose) console.log('#' + this.getPacketNumber() + ' @' + this.getTime() + ' - ');
+        const returnValue = {
+            packetNumber: this.packetNumber,
+            time: this.getTime(),
+            cleared: null,
+            paletteChanged: false,
+        }
+        if (this.options.verbose) console.log('#' + returnValue.packetNumber + ' @' + returnValue.time + ' - ');
 
         // Extract packet
         const offset = this.byteOffset();
         const packet = this.data.slice(offset, offset + CdgParser.PACKET_SIZE);
+        returnValue.offset = offset;
+        returnValue.packet = packet;
         // Mask each byte
         for (let i = 0; i < packet.byteLength; i++) {
             packet[i] &= CdgParser.DATA_MASK;
         }
 
         const command = packet[0];
+        let instruction = null;
         if (command == CdgParser.COMMAND_NONE) {
             //if (this.options.verbose) console.log('COMMAND_NONE');
-        } else
-        if (command == CdgParser.COMMAND_CDG) {
+        } else if (command == CdgParser.COMMAND_CDG) {
             //if (this.options.verbose) console.log('COMMAND_CDG');
-            const instruction = packet[1];
+            instruction = packet[1];
             if (instruction == CdgParser.INSTRUCTION_MEMORY_PRESET) {
                 const color = packet[CdgParser.DATA_OFFSET + 0] & 0x0f;
                 const repeat = packet[CdgParser.DATA_OFFSET + 1];
@@ -234,8 +238,11 @@ export class CdgParser {
                 if (repeat == 0) {
                     this.imageClear(color);
                     changes = true;
+                    // The cleared color is almost certainly going to form the background of any image
+                    this.backgroundColor = color;
                     // Some implementations say to also set the border color on this command
                     this.borderColor = color;
+                    returnValue.cleared = color;
                 }
             } else if (instruction == CdgParser.INSTRUCTION_BORDER_PRESET) {
                 const color = packet[CdgParser.DATA_OFFSET + 0] & 0x0f;
@@ -253,6 +260,7 @@ export class CdgParser {
                 const column = Math.min(packet[CdgParser.DATA_OFFSET + 3], Math.floor(CdgParser.CDG_WIDTH / CdgParser.CDG_TILE_WIDTH) - 1);
 
                 if (this.options.verbose) console.log('INSTRUCTION_TILE_BLOCK ' + (doXor ? 'XOR' : ' Normal') + ' @(' + column + ',' + row + ') [' + colors[0] + ',' + colors[1] + ']');
+
                 // Parse scan lines
                 for (let r = 0; r < CdgParser.CDG_TILE_HEIGHT; r++) {
                     const lineData = packet[CdgParser.DATA_OFFSET + 4 + r];
@@ -260,11 +268,24 @@ export class CdgParser {
                     for (let c = 0; c < CdgParser.CDG_TILE_WIDTH; c++) {
                         const colorValue = (lineData >> (CdgParser.CDG_TILE_WIDTH - 1 - c)) & 1;
                         const x = column * CdgParser.CDG_TILE_WIDTH + c;
-                        const color = colors[colorValue];
-                        this.imagePixel(x, y, color, doXor);
+                        const index = colors[colorValue];
+
+                        // Pixel screen index
+                        const i = y * CdgParser.CDG_WIDTH + x;
+                        // Change Tracking
+                        const previous = this.image[i];
+                        this.oldTile[r * CdgParser.CDG_TILE_WIDTH + c] = previous;
+                        const next = doXor ? (previous ^ index) : index;
+                        this.newTile[r * CdgParser.CDG_TILE_WIDTH + c] = next;
+                        // Set pixel
+                        this.image[i] = next;
+
                     }
                     if (this.options.verbose) console.log('> @(' + (column * CdgParser.CDG_TILE_WIDTH) + ',' + y + ') ' + lineData.toString(2).padStart(6, '0').replaceAll('0', '.').replaceAll('1', '#'));
                 }
+
+                returnValue.oldTile = this.oldTile;
+                returnValue.newTile = this.newTile;
                 changes = {
                     x: column * CdgParser.CDG_TILE_WIDTH - this.xOffset,
                     y: row * CdgParser.CDG_TILE_HEIGHT - this.yOffset,
@@ -327,6 +348,7 @@ export class CdgParser {
                     const alpha = ((0x3f - transparency) << 2) | ((0x3f - transparency) >> 2);
                     this.setPaletteAlpha(i, alpha);
                 }
+                returnValue.paletteChanged = true;  // transparency changed
                 changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_LOWER || instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER) {
                 const offset = instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER ? 8 : 0;
@@ -345,18 +367,18 @@ export class CdgParser {
                     this.setPaletteEntry(offset + i, red, green, blue);
                     if (this.options.verbose) console.log('> @' + (i + offset) + ' #' + red.toString(16).padStart(2, '0') + green.toString(16).padStart(2, '0') + blue.toString(16).padStart(2, '0'));
                 }
+                returnValue.paletteChanged = true;  // palette changed
                 changes = true;
             } else {
                 if (this.options.verbose) console.log('WARNING: Unknown CDG instruction: ' + instruction);
                 if (this.options.errorUnhandledCommands) console.error('ERROR: Unknown CDG instruction: ' + instruction); process.exit(1);
+                instruction = null;
             }
 
         } else {
             if (this.options.verbose) console.log('WARNING: Unknown subcode command: ' + command);
             if (this.options.errorUnhandledCommands) console.error('ERROR: Unknown subcode command: ' + command); process.exit(1);
         }
-
-        this.packetNumber++;
 
         // Normalize changes as a rectangle
         let changeRect = changes;
@@ -366,18 +388,14 @@ export class CdgParser {
             changeRect = { x: 0, y: 0, width: CdgParser.CDG_WIDTH, height: CdgParser.CDG_HEIGHT };
         }
 
-        // Accumulate change trackers
-        if (changes) {
-            for (const tracker of changeTrackers) {
-                const x2 = (tracker.x ?? changeRect.x) + (tracker.width ?? changeRect.width);
-                const y2 = (tracker.y ?? changeRect.y) + (tracker.height ?? changeRect.height);
-                if (changeRect.x !== null) tracker.x = Math.min(tracker.x ?? changeRect.x, changeRect.x);
-                if (changeRect.y !== null) tracker.y = Math.min(tracker.y ?? changeRect.y, changeRect.y);
-                if (changeRect.width !== null) { tracker.width = Math.max(x2, changeRect.x + changeRect.width) - tracker.x; }
-                if (changeRect.height !== null) { tracker.height = Math.max(y2, changeRect.y + changeRect.height) - tracker.y; }
-            }
-        }
-        return changes;
+        returnValue.instruction = instruction;
+        returnValue.changes = changes;
+        returnValue.changeRect = changeRect;
+
+        this.packetNumber++;
+
+        return returnValue;;
     }
     
+
 }

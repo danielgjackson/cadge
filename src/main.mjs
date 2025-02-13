@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import { CdgParser } from './cdg-parser.mjs';
+import { CdgAnalyzer } from './cdg-analyzer.mjs';
 import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
 
@@ -10,16 +11,18 @@ async function run(inputFile, options) {
     console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
     const data = fs.readFileSync(inputFile);
     const parser = new CdgParser(data, options);
+    const analyzer = new CdgAnalyzer(parser, options);
     
     const reportInterval = 0;
     //let lastReported = null;
     let changeTrackCli = {};
     const considerPackets = 30;
     const startTime = Date.now();
-    while (!parser.isEndOfStream()) {
-        const packetNumber = parser.getPacketNumber();
-        const time = parser.getTime();
-        const changed = parser.parseNextPacket([changeTrackCli]);
+    while (true) {
+        const result = analyzer.parseNextPacket([changeTrackCli]);
+        if (!result) {
+            break;
+        }
 
         /*
         if (reportInterval && changed && (lastReported === null || Math.floor(time) >= Math.floor(lastReported + reportInterval))) {
@@ -40,16 +43,21 @@ async function run(inputFile, options) {
         }
         */
 
-        if (options.term && (packetNumber % considerPackets) == 0) {
+        if (options.term && (result.packetNumber % considerPackets) == 0) {
             if (changeTrackCli.x != null) {
-                const buffer = parser.imageRender(changeTrackCli);
+                let buffer;
+                if (1) {
+                    buffer = analyzer.imageRender(changeTrackCli, { mono: 'alpha', checkerboard: true });
+                } else {
+                    buffer = parser.imageRender(changeTrackCli);
+                }
                 const text = renderAnsiImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
                 process.stdout.write(text);
                 changeTrackCli = {};
             }
 
             const now = Date.now();
-            const positionCurrent = time * 1000;
+            const positionCurrent = result.time * 1000;
             const positionExpected = (now - startTime) * options.rate;
             const delay = positionCurrent - positionExpected;
             if (delay > 0) {
