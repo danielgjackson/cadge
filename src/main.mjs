@@ -12,7 +12,7 @@ async function run(inputFile, options) {
     const parser = new CdgParser(data, options);
     
     const reportInterval = 0;
-    let lastReported = null;
+    //let lastReported = null;
     let changeTrackCli = {};
     const considerPackets = 30;
     const startTime = Date.now();
@@ -69,6 +69,7 @@ async function main(args) {
     const options = {
         term: false,
         rate: 1,
+        errorUnhandledCommands: true,
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {

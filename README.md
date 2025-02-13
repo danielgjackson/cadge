@@ -13,6 +13,7 @@ The aim is to provide additional layers that to try to understand when lines of 
   * https://en.wikipedia.org/wiki/CD%2BG
   * https://goughlui.com/2019/03/31/tech-flashback-the-cdgraphics-format-cdg/
   * https://jbum.com/cdg_revealed.html
+  * https://www.cdgfix.com/help/3.x/Technical_information/The_CDG_graphics_format.htm
 
 * Timed text formats: https://en.wikipedia.org/wiki/Timed_text
   * .LRC: 
@@ -36,7 +37,7 @@ The aim is to provide additional layers that to try to understand when lines of 
 Test:
 
 ```
-node src/main.mjs _local/data/test.cdg --term --rate 2
+node src/main.mjs --term --rate 2 _local/data/test.cdg
 ```
 
 -->

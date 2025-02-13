@@ -42,6 +42,7 @@ CD+G system:
 
 const defaultOptions = {
     verbose: false,
+    errorUnhandledCommands: false,
 }
 
 export class CdgParser {
@@ -50,8 +51,8 @@ export class CdgParser {
     static PACKETS_PER_SECOND = 300;
 
     static CDG_COLORS = 16;
-    static CDG_WIDTH = 300;
-    static CDG_HEIGHT = 216;
+    static CDG_WIDTH = 300;     // 50 columns of tiles
+    static CDG_HEIGHT = 216;    // 18 rows of tiles
     static CDG_TILE_WIDTH = 6;
     static CDG_TILE_HEIGHT = 12;
     static CDG_BORDER_WIDTH = CdgParser.CDG_TILE_WIDTH;
@@ -84,6 +85,9 @@ export class CdgParser {
         this.palette = new Uint8Array(CdgParser.CDG_COLORS * 4);
         // Store as 1 byte per pixel, but only the lower 4 bits are used for the color index
         this.image = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT);
+        this.previousImage = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT);    // Used for scrolling
+        this.xOffset = 0;
+        this.yOffset = 0;
 
         // Unknown default palette
         for (let i = 0; i < CdgParser.CDG_COLORS; i++) {
@@ -101,11 +105,8 @@ export class CdgParser {
         this.palette[index * 4 + 3] = 0xff;
     }
 
-    setPaletteTransparent(index) {
-        for (let i = 0; i < CdgParser.CDG_COLORS; i++) {
-            const value = (i == index) ? 0x00 : 0xff;
-            this.palette[i * 4 + 3] = value;
-        }
+    setPaletteAlpha(index, value) {
+        this.palette[index * 4 + 3] = value;
     }
 
     paletteDump() {
@@ -164,7 +165,7 @@ export class CdgParser {
                 if (y < CdgParser.CDG_BORDER_HEIGHT || y >= CdgParser.CDG_HEIGHT - CdgParser.CDG_BORDER_HEIGHT || x < CdgParser.CDG_BORDER_WIDTH || x >= CdgParser.CDG_WIDTH - CdgParser.CDG_BORDER_WIDTH) {
                     index = this.borderColor;
                 } else {
-                    const i = y * CdgParser.CDG_WIDTH + x;
+                    const i = (y + this.yOffset) * CdgParser.CDG_WIDTH + (x + this.xOffset);
                     index = this.image[i];
                 }
                 const j = (y * CdgParser.CDG_WIDTH + x) * 4;
@@ -225,7 +226,7 @@ export class CdgParser {
             //if (this.options.verbose) console.log('COMMAND_CDG');
             const instruction = packet[1];
             if (instruction == CdgParser.INSTRUCTION_MEMORY_PRESET) {
-                const color = packet[CdgParser.DATA_OFFSET + 0];
+                const color = packet[CdgParser.DATA_OFFSET + 0] & 0x0f;
                 const repeat = packet[CdgParser.DATA_OFFSET + 1];
                 if (this.options.verbose) console.log('INSTRUCTION_MEMORY_PRESET ' + color + ' ' + repeat);
                 //if (this.options.verbose) console.log('... ' + packet[CdgParser.DATA_OFFSET + 2] + ', ' + packet[CdgParser.DATA_OFFSET + 3]);
@@ -233,9 +234,11 @@ export class CdgParser {
                 if (repeat == 0) {
                     this.imageClear(color);
                     changes = true;
+                    // Some implementations say to also set the border color on this command
+                    this.borderColor = color;
                 }
             } else if (instruction == CdgParser.INSTRUCTION_BORDER_PRESET) {
-                const color = packet[CdgParser.DATA_OFFSET + 0];
+                const color = packet[CdgParser.DATA_OFFSET + 0] & 0x0f;
                 if (this.options.verbose) console.log('INSTRUCTION_BORDER_PRESET ' + color);
                 //if (this.options.verbose) console.log('... ' + packet[CdgParser.DATA_OFFSET + 1] + ', ' + packet[CdgParser.DATA_OFFSET + 2] + ', ' + packet[CdgParser.DATA_OFFSET + 3]);
                 this.borderColor = color;
@@ -243,11 +246,12 @@ export class CdgParser {
             } else if (instruction == CdgParser.INSTRUCTION_TILE_BLOCK || instruction == CdgParser.INSTRUCTION_TILE_BLOCK_XOR) {
                 const doXor = instruction == CdgParser.INSTRUCTION_TILE_BLOCK_XOR;
                 const colors = [
-                    packet[CdgParser.DATA_OFFSET + 0],
-                    packet[CdgParser.DATA_OFFSET + 1],
+                    packet[CdgParser.DATA_OFFSET + 0] & 0x0f,
+                    packet[CdgParser.DATA_OFFSET + 1] & 0x0f,
                 ];
-                const row = packet[CdgParser.DATA_OFFSET + 2];
-                const column = packet[CdgParser.DATA_OFFSET + 3];
+                const row = Math.min(packet[CdgParser.DATA_OFFSET + 2], Math.floor(CdgParser.CDG_HEIGHT / CdgParser.CDG_TILE_HEIGHT) - 1);
+                const column = Math.min(packet[CdgParser.DATA_OFFSET + 3], Math.floor(CdgParser.CDG_WIDTH / CdgParser.CDG_TILE_WIDTH) - 1);
+
                 if (this.options.verbose) console.log('INSTRUCTION_TILE_BLOCK ' + (doXor ? 'XOR' : ' Normal') + ' @(' + column + ',' + row + ') [' + colors[0] + ',' + colors[1] + ']');
                 // Parse scan lines
                 for (let r = 0; r < CdgParser.CDG_TILE_HEIGHT; r++) {
@@ -262,22 +266,67 @@ export class CdgParser {
                     if (this.options.verbose) console.log('> @(' + (column * CdgParser.CDG_TILE_WIDTH) + ',' + y + ') ' + lineData.toString(2).padStart(6, '0').replaceAll('0', '.').replaceAll('1', '#'));
                 }
                 changes = {
-                    x: column * CdgParser.CDG_TILE_WIDTH,
-                    y: row * CdgParser.CDG_TILE_HEIGHT,
+                    x: column * CdgParser.CDG_TILE_WIDTH - this.xOffset,
+                    y: row * CdgParser.CDG_TILE_HEIGHT - this.yOffset,
                     width: CdgParser.CDG_TILE_WIDTH,
                     height: CdgParser.CDG_TILE_HEIGHT,
                 };
             } else if (instruction == CdgParser.INSTRUCTION_SCROLL_PRESET || instruction == CdgParser.INSTRUCTION_SCROLL_COPY) {
                 const doCopy = instruction == CdgParser.INSTRUCTION_SCROLL_COPY;
-                if (this.options.verbose) console.log('INSTRUCTION_SCROLL_PRESET ' + (doCopy ? 'COPY' : ' Normal'));
-                // TODO: Scroll - color & 0x0f, hScroll (sCmd=(hScroll&0x30)>>4 where 0=no scroll, 1=6 right, 2=6 left; hOffset=(hScroll&0x07) values 0-5), vScroll (sCmd=(hScroll&0x30)>>4 where 0=no scroll, 1=12 down, 2=12 up;  vOffset=(vScroll&0x0f) values 0-11)
-                if (this.options.verbose) console.log('WARNING: Scroll not implemented');
-                //changes = true;
+
+                const color = packet[CdgParser.DATA_OFFSET + 0] & 0x0f;
+                const hScrollCmd = (packet[CdgParser.DATA_OFFSET + 1] >> 4) & 0x03;                     // 0=none, 1=right +6, 2=left -6, 3=invalid
+                const hScrollOff = Math.min(packet[CdgParser.DATA_OFFSET + 1] & 0x07, CDG_TILE_WIDTH);
+                const vScrollCmd = (packet[CdgParser.DATA_OFFSET + 2] >> 4) & 0x03;                     // 0=none, 1=down +12, 2=up -12, 3=invalid
+                const vScrollOff = Math.min(packet[CdgParser.DATA_OFFSET + 2] & 0x0f, CDG_TILE_HEIGHT);
+                if (this.options.verbose) console.log('INSTRUCTION_SCROLL_PRESET ' + (doCopy ? 'COPY' : ' Normal') + ' ' + color + ' ' + hScrollCmd + ' ' + hScrollOff + ' ' + vScrollCmd + ' ' + vScrollOff);
+
+                // Update scroll offset
+                if (this.xOffset != hScrollOff || this.yOffset != vScrollOff) {
+                    this.xOffset = hScrollOff;
+                    this.yOffset = vScrollOff;
+                    changes = true;
+                }
+
+                // Scroll the buffer
+                const hScroll = hScrollCmd == 1 ? CDG_TILE_WIDTH : (hScrollCmd == 2 ? -CDG_TILE_WIDTH : 0);
+                const vScroll = vScrollCmd == 1 ? CDG_TILE_HEIGHT : (vScrollCmd == 2 ? -CDG_TILE_HEIGHT : 0);
+                if (hScroll != 0 || vScroll != 0) {
+                    // Copy current image to previous image
+                    this.previousImage.set(this.image);
+                    // Move the current image
+                    for (let y = 0; y < CdgParser.CDG_HEIGHT; y++) {
+                        for (let x = 0; x < CdgParser.CDG_WIDTH; x++) {
+                            const dst = y * CdgParser.CDG_WIDTH + x;
+                            let sx = x + hScroll;
+                            let sy = y + vScroll;
+                            // Copying wraps the source index so it won't be off screen
+                            if (doCopy) {
+                                sx = (sx + CdgParser.CDG_WIDTH) % CdgParser.CDG_WIDTH;
+                                sy = (sy + CdgParser.CDG_HEIGHT) % CdgParser.CDG_HEIGHT;
+                            }
+                            // Off-screen copies use new color
+                            let srcIndex;
+                            if (sx < 0 || sx >= CdgParser.CDG_WIDTH || sy < 0 || sy >= CdgParser.CDG_HEIGHT) {
+                                srcIndex = color;
+                            } else {
+                                srcIndex = this.previousImage[sy * CdgParser.CDG_WIDTH + sx];
+                            }
+                            this.image[dst] = srcIndex;
+                        }
+                    }
+                    changes = true;
+                }
+                
             } else if (instruction == CdgParser.INSTRUCTION_DEFINE_TRANSPARENT) {
-                const color = packet[CdgParser.DATA_OFFSET + 0];
-                if (this.options.verbose) console.log('INSTRUCTION_DEFINE_TRANSPARENT ' + color);
+                if (this.options.verbose) console.log('INSTRUCTION_DEFINE_TRANSPARENT ' + Array(CdgParser.CDG_COLORS).fill().map((_, i) => packet[CdgParser.DATA_OFFSET + i]).join(' '));
                 //if (this.options.verbose) console.log('... ' + packet[CdgParser.DATA_OFFSET + 1] + ', ' + packet[CdgParser.DATA_OFFSET + 2] + ', ' + packet[CdgParser.DATA_OFFSET + 3]);
-                this.setPaletteTransparent(color);
+                // Each data byte is the transparency value 0-63 for the color index, 0=opaque, 63=fully transparent
+                for (let i = 0; i < CdgParser.CDG_COLORS; i++) {
+                    const transparency = packet[CdgParser.DATA_OFFSET + i] & 0x3f;  // 0=opaque, 63=transparent
+                    const alpha = ((0x3f - transparency) << 2) | ((0x3f - transparency) >> 2);
+                    this.setPaletteAlpha(i, alpha);
+                }
                 changes = true;
             } else if (instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_LOWER || instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER) {
                 const offset = instruction == CdgParser.INSTRUCTION_LOAD_COLOR_TABLE_UPPER ? 8 : 0;
@@ -299,10 +348,12 @@ export class CdgParser {
                 changes = true;
             } else {
                 if (this.options.verbose) console.log('WARNING: Unknown CDG instruction: ' + instruction);
+                if (this.options.errorUnhandledCommands) console.error('ERROR: Unknown CDG instruction: ' + instruction); process.exit(1);
             }
 
         } else {
             if (this.options.verbose) console.log('WARNING: Unknown subcode command: ' + command);
+            if (this.options.errorUnhandledCommands) console.error('ERROR: Unknown subcode command: ' + command); process.exit(1);
         }
 
         this.packetNumber++;
