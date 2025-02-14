@@ -19,8 +19,8 @@ async function run(inputFile, options) {
     const considerPackets = 30;
     const startTime = Date.now();
     while (true) {
-        const result = analyzer.parseNextPacket([changeTrackCli]);
-        if (!result) {
+        const step = analyzer.step([changeTrackCli]);
+        if (!step.result) {
             break;
         }
 
@@ -43,7 +43,7 @@ async function run(inputFile, options) {
         }
         */
 
-        if (options.term && (result.packetNumber % considerPackets) == 0) {
+        if (options.term && (step.result.packetNumber % considerPackets) == 0) {
             if (changeTrackCli.x != null) {
                 let buffer;
                 if (1) {
@@ -57,7 +57,7 @@ async function run(inputFile, options) {
             }
 
             const now = Date.now();
-            const positionCurrent = result.time * 1000;
+            const positionCurrent = step.result.time * 1000;
             const positionExpected = (now - startTime) * options.rate;
             const delay = positionCurrent - positionExpected;
             if (delay > 0) {

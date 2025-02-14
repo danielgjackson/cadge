@@ -72,7 +72,7 @@ Rough design for lyric analysis:
 Test:
 
 ```
-node src/main.mjs --term --rate 2 _local/data/test.cdg
+node src/main.mjs --term --rate 5 _local/data/test.cdg
 ```
 
 -->
