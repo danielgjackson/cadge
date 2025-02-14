@@ -19,9 +19,11 @@ async function run(inputFile, options) {
     const considerPackets = 30;
     const startTime = Date.now();
     while (true) {
-        const step = analyzer.step([changeTrackCli]);
-        if (!step.result) {
-            break;
+        const stepResult = analyzer.step([changeTrackCli]);
+
+        let applyResult = null;
+        if (options.analyseAfter == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time >= options.analyseAfter)) {
+            applyResult = analyzer.applyChanges(stepResult);
         }
 
         /*
@@ -43,7 +45,7 @@ async function run(inputFile, options) {
         }
         */
 
-        if (options.term && (step.result.packetNumber % considerPackets) == 0) {
+        if (options.term && stepResult.parseResult && (stepResult.parseResult.packetNumber % considerPackets) == 0) {
             if (changeTrackCli.x != null) {
                 let buffer;
                 if (1) {
@@ -57,12 +59,26 @@ async function run(inputFile, options) {
             }
 
             const now = Date.now();
-            const positionCurrent = step.result.time * 1000;
+            const positionCurrent = stepResult.parseResult.time * 1000;
             const positionExpected = (now - startTime) * options.rate;
             const delay = positionCurrent - positionExpected;
             if (delay > 0) {
                 await new Promise(resolve => setTimeout(resolve, delay / options.rate));
             }
+        }
+
+        if (options.verbose) {
+            if (applyResult) {
+                for (const change of applyResult.changes) {
+                    console.log(JSON.stringify(change));
+                }
+            }
+        }
+
+        // End of stream
+        if (!stepResult.parseResult) {
+            console.log('End of stream');
+            break;
         }
     
     }
@@ -78,12 +94,18 @@ async function main(args) {
         term: false,
         rate: 1,
         errorUnhandledCommands: true,
+        verbose: false,
+        analyseAfter: null,       // 12
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {
             help = true;
         } else if (args[i] == '--term') {
             options.term = true;
+        } else if (args[i] == '--verbose') {
+            options.verbose = true;
+        } else if (args[i] == '--analyseAfter') {
+            options.analyseAfter = parseFloat(args[++i]);
         } else if (args[i] == '--rate') {
             options.rate = parseFloat(args[++i]);
         } else if (args[i].startsWith('-')) {

@@ -19,7 +19,7 @@ export class CdgAnalyzer {
         this.paletteChanged();
         this.updateRowStats();
         this.newTileStats = null;
-        this.rowGroups = {};        // .start .end
+        this.rowGroups = {};        // .id .start .end
         this.groupIdCounter = 0;
     }
     
@@ -196,8 +196,8 @@ export class CdgAnalyzer {
             this.previousGroup = new Array(CdgParser.CDG_HEIGHT);
         }
         this.previousGroup.fill(null);
-        for (const group in this.rowGroups) {
-            for (let row = this.rowGroups[group].start; row <= this.rowGroups[group].end; row++) {
+        for (const group of Object.values(this.rowGroups)) {
+            for (let row = group.start; row <= group.end; row++) {
                 this.previousGroup[row] = group;
             }
         }
@@ -219,21 +219,22 @@ export class CdgAnalyzer {
                     };
                     newGroups.push(inGroup);
                 }
+
+                // If in a group, update end row
+                inGroup.end = row;
+                // Check previous group mapping is added to this group
+                const previousGroupForRow = this.previousGroup[row];
+                if (previousGroupForRow) {
+                    inGroup.previousGroupMapping[previousGroupForRow.id] = previousGroupForRow;
+                    previousGroupsOverlapped[previousGroupForRow.id] = true;
+                }
+
             } else {    // If should not be in a group
                 // ...but in a group
                 if (inGroup) {
                     //inGroup.end = row - 1;
                     inGroup = null;
                 }
-            }
-
-            // Update group mapping to previous group(s)
-            if (inGroup) {
-                inGroup.end = row;
-// TODO: Logic error somewhere in above code
-                const previousId = this.previousGroup[row].id;
-                inGroup.previousGroupMapping[previousId] = previousId;
-                previousGroupsOverlapped[previousId] = true;
             }
         }
 
@@ -246,9 +247,9 @@ export class CdgAnalyzer {
             }
         }
         // Group deletions: no new group overlaps
-        for (const group of this.rowGroups) {
+        for (const group of Object.values(this.rowGroups)) {
             if (!previousGroupsOverlapped[group.id]) {
-                groupDeletions[previousId] = group;
+                groupDeletions[group.id] = group;
             }
         }
         // Group deletions: remove deleted split groups
@@ -271,6 +272,7 @@ export class CdgAnalyzer {
                 const previousId = Object.keys(group.previousGroupMapping)[0];
                 //group.id = previousId;
                 const existingGroup = this.rowGroups[previousId];
+                // Update to new start/end row
                 existingGroup.start = group.start;
                 existingGroup.end = group.end;
                 let changed = false;
@@ -300,16 +302,16 @@ export class CdgAnalyzer {
     updateTileStats(result) {
         if (!result.newTile) return null;
         // Stats for each row of the new tile
-        newTileStats = new Array(CdgParser.CDG_TILE_HEIGHT).fill();
+        let newTileStats = new Array(CdgParser.CDG_TILE_HEIGHT).fill();
         for (let r = 0; r < CdgParser.CDG_TILE_HEIGHT; r++) {
             newTileStats[r] = {
-                y: result.changes.top + r,
+                y: result.changes.y + r,
                 add: { count: 0, start: null, end: null, },
                 del: { count: 0, start: null, end: null, },
                 chg: { count: 0, start: null, end: null, },
             };
             for (let c = 0; c < CdgParser.CDG_TILE_WIDTH; c++) {
-                const x = result.changes.left + c;
+                const x = result.changes.x + c;
                 const previous = result.oldTile[r * CdgParser.CDG_TILE_WIDTH + c];
                 const next = result.newTile[r * CdgParser.CDG_TILE_WIDTH + c];
                 if (next != previous) {
@@ -340,14 +342,18 @@ export class CdgAnalyzer {
     analyzeGroupTileChanges(newTileStats) {
         if (newTileStats == null) { return []; }
         const groupTileChanges = [];
-        for (const group in this.rowGroups) {
-            let firstRow = group.start - newTileStats.y;
-            let lastRow = group.end - newTileStats.y;
+        for (const group of Object.values(this.rowGroups)) {
+            const newTileY = newTileStats[0].y;
+            let firstRow = group.start - newTileY;
+            let lastRow = group.end - newTileY;
             if (firstRow < 0) firstRow = 0;
             if (lastRow > CdgParser.CDG_TILE_HEIGHT - 1) lastRow = CdgParser.CDG_TILE_HEIGHT - 1;
             if (firstRow > CdgParser.CDG_TILE_HEIGHT - 1 || lastRow < 0) {
+//console.error('Group (' + group.start + '-' + group.end + ') does not intersect tile (' + newTileY + '-' + (newTileY + CdgParser.CDG_TILE_HEIGHT - 1) + ')');
                 continue;
             }
+//console.error('Group (' + group.start + '-' + group.end + ') does intersect tile (' + newTileY + '-' + (newTileY + CdgParser.CDG_TILE_HEIGHT - 1) + ') -- tile (' + firstRow + '-' + lastRow  + ')');
+
             const groupStats = {
                 group,
                 add: { count: 0, start: null, end: null, },
@@ -378,46 +384,145 @@ export class CdgAnalyzer {
     }
 
     step(changeTrackers = []) {
-        const result = this.parser.parseNextPacket();
-        if (result) {
-            this.accumulateChanges(result.changeRect, changeTrackers);
-            if (result.cleared != null) {
-                this.backgroundColor = result.cleared;
+        const parseResult = this.parser.parseNextPacket();
+        const stepResult = {
+            parseResult,
+            groupTileChanges: [],
+            groupChanges: {
+                del: {},
+                add: {},
+                chg: {},
+            },
+        };
+
+        if (parseResult) {
+            this.accumulateChanges(parseResult.changeRect, changeTrackers);
+            if (parseResult.cleared != null) {
+                this.backgroundColor = parseResult.cleared;
             }
-            if (result.cleared != null || result.paletteChanged) {
+            if (parseResult.cleared != null || parseResult.paletteChanged) {
                 this.paletteChanged();
             }
 
             // Update tile
-            const newTileStats = this.updateTileStats(result);
+            const newTileStats = this.updateTileStats(parseResult);
 
             // Update row stats
-            if (result.changeRect.y != null) {
-                this.updateRowStats(result.changeRect.y, result.changeRect.y + result.changeRect.height - 1);
+            if (parseResult.changeRect.y != null) {
+                this.updateRowStats(parseResult.changeRect.y, parseResult.changeRect.y + parseResult.changeRect.height - 1);
             }
 
             // Check for group-based tile changes
-            result.groupTileChanges = this.analyzeGroupTileChanges(newTileStats);
+            stepResult.groupTileChanges = this.analyzeGroupTileChanges(newTileStats);
 
             // Analyze row groups
-            result.groupChanges = this.analyzeRowGroups();
+            stepResult.groupChanges = this.analyzeRowGroups();
         } else {
             // Last packet: delete any remaining groups
-            result.groupTileChanges = [];
-            result.groupChanges = {
+            stepResult.groupChanges = {
                 del: Object.fromEntries(Object.entries(this.rowGroups)),
                 add: {},
                 chg: {},
             };
         }
-        return result;
+
+        return stepResult;
     }
 
+    applyChanges(stepResult) {
+        const time = stepResult.parseResult.time
+        const changes = [];
+        const applyResult = {
+            stepResult,
+            changes,
+            time,
+        };
 
-    // TODO: Apply group tile changes: step.groupTileChange .group .add .del .chg
-    // TODO: Handle group deletions: step.groupChanges.del
-    // TODO: Handle group changes: step.groupChanges.chg
-    // TODO: Handle group additions: step.groupChanges.add
+        // Apply group tile changes
+        for (const groupTileChanges of stepResult.groupTileChanges) {
+            // groupTileChanges .group .add .del .chg {.count, .start, .end}
+            const group = groupTileChanges.group;
+
+            // Handle group content add (transition to state: writing)
+            if (groupTileChanges.add.count) {
+                if (group.state != 'writing') {
+                    if (group.writingStart == null) group.writingStart = time;
+                    if (group.state != null) {
+                        changes.push({ action: 'warning', description: 'Text addition in an unexpected state: ' + group.state });
+                    }
+                    group.state = 'writing';
+                    changes.push({ action: 'group-state', groupId: group.id, state: group.state });
+                }
+                group.writingEnd = time;
+                // TODO: Handle writing text
+            }
+
+            // Handle group content del (transition to state: erasing)
+            if (groupTileChanges.del.count) {
+                if (group.writingStart == null) group.erasingStart = time;
+                if (group.state != 'erasing') {
+                    if (group.state = 'progress') {
+                        changes.push({ action: 'warning', description: 'Text erasing in an unexpected state: ' + group.state });
+                    }
+                    group.state = 'erasing';
+                    changes.push({ action: 'group-state', groupId: group.id, state: group.state });
+                }
+                group.erasingEnd = time;
+                // TODO: Handle erasing text
+            }
+            
+            // Handle group content chg (transition to state: progress)
+            if (groupTileChanges.chg.count) {
+                if (group.state != 'progress') {
+                    if (group.progressStart == null) group.progressStart = time;
+                    if (group.state != 'writing') {
+                        changes.push({ action: 'warning', description: 'Text progress in an unexpected state: ' + group.state });
+                    }
+                    group.state = 'progress';
+                    changes.push({ action: 'group-state', groupId: group.id, state: group.state });
+                }
+                group.progressEnd = time;
+                const position = groupTileChanges.chg.end;
+                // TODO: Handle progress in text
+                changes.push({ action: 'group-progress', groupId: group.id, position });
+            }
+        }
+
+        // Handle group deletions
+        for (const group of Object.values(stepResult.groupChanges.del)) {
+            // TODO: Handle group deletion event
+            changes.push({
+                action: 'group-del',
+                groupId: group.id,
+            });
+            delete this.rowGroups[group.id];
+        }
+
+        // Handle group changes
+        for (const group of Object.values(stepResult.groupChanges.chg)) {
+            // (nothing to do)
+            changes.push({
+                action: 'group-chg',
+                groupId: group.id,
+            });
+        }
+
+        // Handle group additions
+        for (const group of Object.values(stepResult.groupChanges.add)) {
+            group.minStart = group.start;
+            group.minEnd = group.end;
+            group.state = null;
+            this.rowGroups[group.id] = group;
+            // (nothing to do)
+            changes.push({
+                action: 'group-add',
+                groupId: group.id,
+                start: group.start,
+            });
+        }
+
+        return applyResult;
+    }
 
 
 }
