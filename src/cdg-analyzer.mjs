@@ -182,7 +182,10 @@ export class CdgAnalyzer {
 
         // Dilate
         for (let i = 0; i < this.options.dilateRadius; i++) {
-            this.prevRowInGroup.set(this.rowInGroup);
+            // Set this.prevRowInGroup to this.rowInGroup
+            for (let row = 0; row < CdgParser.CDG_HEIGHT; row++) {
+                this.prevRowInGroup[row] = this.rowInGroup[row];
+            }
             for (let row = 0; row < CdgParser.CDG_HEIGHT; row++) {
                 this.rowInGroup[row] = (row > 0 && this.prevRowInGroup[row - 1]) || this.prevRowInGroup[row] || (row < CdgParser.CDG_HEIGHT - 1 && this.prevRowInGroup[row + 1]);
             }
@@ -227,6 +230,7 @@ export class CdgAnalyzer {
             // Update group mapping to previous group(s)
             if (inGroup) {
                 inGroup.end = row;
+// TODO: Logic error somewhere in above code
                 const previousId = this.previousGroup[row].id;
                 inGroup.previousGroupMapping[previousId] = previousId;
                 previousGroupsOverlapped[previousId] = true;
@@ -385,7 +389,7 @@ export class CdgAnalyzer {
             }
 
             // Update tile
-            const newTileStats = updateTileStats(result);
+            const newTileStats = this.updateTileStats(result);
 
             // Update row stats
             if (result.changeRect.y != null) {
