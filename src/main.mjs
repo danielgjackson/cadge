@@ -23,7 +23,9 @@ async function run(inputFile, options) {
 
         let applyResult = null;
         if (options.analyseAfter == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time >= options.analyseAfter)) {
-            applyResult = analyzer.applyChanges(stepResult);
+            if (options.analyseBefore == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time < options.analyseBefore)) {
+                applyResult = analyzer.applyChanges(stepResult);
+            }
         }
 
         /*
@@ -67,11 +69,9 @@ async function run(inputFile, options) {
             }
         }
 
-        if (options.verbose) {
-            if (applyResult) {
-                for (const change of applyResult.changes) {
-                    console.log(JSON.stringify(change));
-                }
+        if (options.analyseDump && applyResult) {
+            for (const change of applyResult.changes) {
+                console.log(JSON.stringify(change));
             }
         }
 
@@ -95,7 +95,9 @@ async function main(args) {
         rate: 1,
         errorUnhandledCommands: true,
         verbose: false,
-        analyseAfter: null,       // 12
+        analyseDump: true,
+        analyseAfter: null,
+        analyseBefore: null,
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {
@@ -104,8 +106,12 @@ async function main(args) {
             options.term = true;
         } else if (args[i] == '--verbose') {
             options.verbose = true;
+        } else if (args[i] == '--analyseDump') {
+            options.analyseDump = true;
         } else if (args[i] == '--analyseAfter') {
             options.analyseAfter = parseFloat(args[++i]);
+        } else if (args[i] == '--analyseBefore') {
+            options.analyseBefore = parseFloat(args[++i]);
         } else if (args[i] == '--rate') {
             options.rate = parseFloat(args[++i]);
         } else if (args[i].startsWith('-')) {

@@ -73,7 +73,7 @@ Test:
 
 ```
 node src/main.mjs --term --rate 5 _local/data/test.cdg
-node src/main.mjs --analyseAfter 12 _local/data/test.cdg --verbose
+node src/main.mjs --analyseDump --analyseAfter 12 --analyseBefore 25 _local/data/test.cdg
 ```
 
 -->
