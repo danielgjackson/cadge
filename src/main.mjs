@@ -13,6 +13,10 @@ async function run(inputFile, options) {
     const parser = new CdgParser(data, options);
     const analyzer = new CdgAnalyzer(parser, options);
     
+    // Negative times are relative to the end of the stream
+    if (options.analyseAfter != null && options.analyseAfter < 0) { options.analyseAfter += parser.getDuration(); }
+    if (options.analyseBefore != null && options.analyseBefore < 0) { options.analyseBefore += parser.getDuration(); }
+
     const reportInterval = 0;
     //let lastReported = null;
     let changeTrackCli = {};
@@ -24,7 +28,7 @@ async function run(inputFile, options) {
         let applyResult = null;
         if (options.analyseAfter == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time >= options.analyseAfter)) {
             if (options.analyseBefore == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time < options.analyseBefore)) {
-                applyResult = analyzer.applyChanges(stepResult);
+                applyResult = await analyzer.applyChanges(stepResult);
             }
         }
 
@@ -71,16 +75,26 @@ async function run(inputFile, options) {
 
         if (options.analyseDump && applyResult) {
             for (const change of applyResult.changes) {
+                // action: 'group-text', groupId: group.id, srcRect, dimensions, buffer
+                if (change.action == 'group-text') {
+                    const text = renderAnsiImage(change.buffer, change.dimensions.width, change.dimensions.height, false);
+                    process.stdout.write(text);
+                    delete change.buffer;
+                    console.log('LYRIC: ' + change.ocrResult.allText);
+                }
                 console.log(JSON.stringify(change));
             }
         }
 
         // End of stream
         if (!stepResult.parseResult) {
-            console.log('End of stream');
+            //console.log('End of stream');
             break;
         }
-    
+
+        if (options.maxDuration != null && stepResult.parseResult.time >= options.maxDuration) {
+            break;
+        }
     }
 
     return 0;
@@ -112,6 +126,8 @@ async function main(args) {
             options.analyseAfter = parseFloat(args[++i]);
         } else if (args[i] == '--analyseBefore') {
             options.analyseBefore = parseFloat(args[++i]);
+        } else if (args[i] == '--maxDuration') {
+            options.maxDuration = parseFloat(args[++i]);
         } else if (args[i] == '--rate') {
             options.rate = parseFloat(args[++i]);
         } else if (args[i].startsWith('-')) {

@@ -69,11 +69,22 @@ Rough design for lyric analysis:
 
 <!--
 
+Tesseract installation:
+  * https://github.com/tesseract-ocr/tessdoc/blob/main/Installation.md
+  * Windows: "%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe"
+
+```cmd
+@rem --psm single_line
+type test.bmp | "%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe" %* - - quiet hocr > test.txt
+type test.txt
+```
+
 Test:
 
 ```
 node src/main.mjs --term --rate 5 _local/data/test.cdg
-node src/main.mjs --analyseDump --analyseAfter 12 --analyseBefore 25 _local/data/test.cdg
+node src/main.mjs --analyseDump --analyseAfter 12 --analyseBefore -13.5 _local/data/test.cdg
+node src/main.mjs --analyseDump _local/data/test.cdg --verbose --maxDuration 2.2
 ```
 
 -->

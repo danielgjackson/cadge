@@ -2,6 +2,7 @@
 // Dan Jackson, 2025
 
 import { CdgParser } from './cdg-parser.mjs';
+import { TextDetectorNode } from './text-detector.mjs';
 
 const defaultOptions = {
     backgroundLumaSimilarity: 0.094, // Treat as background if within this threshold
@@ -21,8 +22,10 @@ export class CdgAnalyzer {
         this.newTileStats = null;
         this.rowGroups = {};        // .id .start .end
         this.groupIdCounter = 0;
+        this.textDetector = new TextDetectorNode();
     }
-    
+
+   
     colorLuminance(rgb) {
         if (rgb == null) return null;
         return (rgb.r * 0.299 + rgb.g * 0.587 + rgb.b * 0.114) / 255;
@@ -68,22 +71,44 @@ export class CdgAnalyzer {
 
 
     imageRender(rectangle, options = {}) {
-        if (!this.renderBuffer) {
-            this.renderBuffer = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT * 4);
-        }
+        // Rectangle to render
         if (rectangle == null || rectangle.x == null) {
             rectangle = { x: 0, y: 0, width: CdgParser.CDG_WIDTH, height: CdgParser.CDG_HEIGHT };
         }
+
+        // Buffer target
+        let span;
+        let offset;
+        let buffer;
+        if ('renderBuffer' in options) { // Supplied buffer
+            span = rectangle.width * 4;
+            offset = -(rectangle.y * span + rectangle.x * 4);
+            buffer = options.renderBuffer;
+            if (!buffer) {  // Not specified, create on demand
+                buffer = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT * 4);
+            }
+        } else {    // Internal buffer
+            span = CdgParser.CDG_WIDTH * 4;
+            offset = 0;
+            if (!this.renderBuffer) {
+                this.renderBuffer = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT * 4);
+            }
+            buffer = this.renderBuffer;
+        }
+
         for (let y = rectangle.y; y < rectangle.y + rectangle.height; y++) {
             for (let x = rectangle.x; x < rectangle.x + rectangle.width; x++) {
                 let index;
                 if (y < CdgParser.CDG_BORDER_HEIGHT || y >= CdgParser.CDG_HEIGHT - CdgParser.CDG_BORDER_HEIGHT || x < CdgParser.CDG_BORDER_WIDTH || x >= CdgParser.CDG_WIDTH - CdgParser.CDG_BORDER_WIDTH) {
-                    index = this.parser.borderColor;
+                    if (options.noBorder) {
+                        index = this.parser.backgroundColor;
+                    } else {
+                        index = this.parser.borderColor;
+                    }
                 } else {
                     const i = (y + this.parser.yOffset) * CdgParser.CDG_WIDTH + (x + this.parser.xOffset);
                     index = this.parser.image[i];
                 }
-                const j = (y * CdgParser.CDG_WIDTH + x) * 4;
                 let rgb = this.parser.getPaletteEntry(index);
 
                 // Monochrome-ish
@@ -113,13 +138,15 @@ export class CdgAnalyzer {
                     }
                 }
 
-                this.renderBuffer[j + 0] = rgb.r;
-                this.renderBuffer[j + 1] = rgb.g;
-                this.renderBuffer[j + 2] = rgb.b;
-                this.renderBuffer[j + 3] = rgb.a;
+                // Output
+                const j = offset + y * span + x * 4;
+                buffer[j + 0] = rgb.r;
+                buffer[j + 1] = rgb.g;
+                buffer[j + 2] = rgb.b;
+                buffer[j + 3] = rgb.a;
             }
         }
-        return this.renderBuffer;
+        return buffer;
     }
 
     // Aggregate rectangle changes
@@ -429,7 +456,7 @@ export class CdgAnalyzer {
         return stepResult;
     }
 
-    applyChanges(stepResult) {
+    async applyChanges(stepResult) {
         const time = stepResult.parseResult.time
         const changes = [];
         const applyResult = {
@@ -448,7 +475,7 @@ export class CdgAnalyzer {
                 if (group.state != 'writing') {
                     if (group.writingStart == null) group.writingStart = time;
                     if (group.state != null) {
-                        changes.push({ action: 'warning', description: 'Text addition in an unexpected state: ' + group.state });
+                        changes.push({ action: 'warning', groupId: group.id, description: 'Text addition in an unexpected state: ' + group.state });
                     }
                     group.state = 'writing';
                     changes.push({ action: 'group-state', groupId: group.id, state: group.state });
@@ -462,7 +489,7 @@ export class CdgAnalyzer {
                 if (group.writingStart == null) group.erasingStart = time;
                 if (group.state != 'erasing') {
                     if (group.state = 'progress') {
-                        changes.push({ action: 'warning', description: 'Text erasing in an unexpected state: ' + group.state });
+                        changes.push({ action: 'warning', groupId: group.id, description: 'Text erasing in an unexpected state: ' + group.state });
                     }
                     group.state = 'erasing';
                     changes.push({ action: 'group-state', groupId: group.id, state: group.state });
@@ -475,16 +502,32 @@ export class CdgAnalyzer {
             if (groupTileChanges.chg.count) {
                 if (group.state != 'progress') {
                     if (group.progressStart == null) group.progressStart = time;
-                    if (group.state != 'writing') {
-                        changes.push({ action: 'warning', description: 'Text progress in an unexpected state: ' + group.state });
+                    if (group.state == 'writing') {
+                        const srcRect = {
+                            x: 0,
+                            y: group.start - 1,
+                            width: CdgParser.CDG_WIDTH,
+                            height: group.end - group.start + 1 + 2,
+                        };
+                        const buffer = this.imageRender(srcRect, { mono: 'invert', noBorder: true, renderBuffer: null });
+                        const dimensions = { width: srcRect.width, height: srcRect.height };
+                        const ocrResult = await this.detectText(buffer, dimensions.width, dimensions.height);
+                        changes.push({ 
+                            action: 'group-text', groupId: group.id, srcRect, dimensions, buffer, ocrResult
+                        });
+                    } else {
+                        changes.push({ action: 'warning', groupId: group.id, description: 'Text progress in an unexpected state: ' + group.state });
                     }
                     group.state = 'progress';
                     changes.push({ action: 'group-state', groupId: group.id, state: group.state });
                 }
                 group.progressEnd = time;
                 const position = groupTileChanges.chg.end;
-                // TODO: Handle progress in text
-                changes.push({ action: 'group-progress', groupId: group.id, position });
+                if (group.position == null || group.position < position) {
+                    group.position = position;
+                    // TODO: Handle progress in text
+                    changes.push({ action: 'group-progress', groupId: group.id, position });
+                }
             }
         }
 
@@ -524,5 +567,31 @@ export class CdgAnalyzer {
         return applyResult;
     }
 
+    async detectText(buffer, width, height) {
+        const image = {     // ImageData
+            data: buffer, width, height
+        };
+        const detectedTextBlocks = await this.textDetector.detect(image, {
+            segmentationMode: 'single_line',
+        });
+        const result = {
+            allText: null,
+            texts: [],
+            words: [],
+        };
+        for (const detectedText of detectedTextBlocks) {
+            // detectedText.boundingBox.{x, y, width, height, top, right, bottom, left}
+            // detectedText.cornerPoints[0..3].{x, y}
+            // detectedText.rawValue
+            result.texts.push(detectedText);
+            if (detectedText._words) {
+                for (const word of detectedText._words) {
+                    result.words.push(word);    // word._confidence .rawValue
+                }
+            }
+        }
+        result.allText = result.texts.map(text => text.rawValue).join('\n');
+        return result;
+    }
 
 }

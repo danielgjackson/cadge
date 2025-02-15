@@ -139,8 +139,16 @@ export class CdgParser {
         return this.packetNumber;
     }
 
+    getPacketCount() {
+        return Math.floor(this.data.byteLength / CdgParser.PACKET_SIZE);
+    }
+
     getTime() {
         return this.packetNumber / CdgParser.PACKETS_PER_SECOND;
+    }
+
+    getDuration() {
+        return this.getPacketCount() / CdgParser.PACKETS_PER_SECOND;
     }
 
     byteOffset() {

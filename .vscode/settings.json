@@ -1,15 +1,20 @@
 {
     "cSpell.words": [
         "ALPHABITFIELDS",
+        "bbox",
         "BITFIELDS",
         "BITMAPCOREHEADER",
         "BITMAPFILEHEADER",
         "BITMAPINFOHEADER",
         "BITMAPV",
         "GGBBBB",
+        "hocr",
         "INFOHEADER",
+        "LOCALAPPDATA",
         "Luma",
+        "ocrx",
         "Pels",
-        "RRRRGG"
+        "RRRRGG",
+        "wconf"
     ]
 }

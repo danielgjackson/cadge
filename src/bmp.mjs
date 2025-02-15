@@ -13,7 +13,7 @@ export function BitmapGenerate(data, width, height, alpha = false) {
         BITMAPV4HEADER: 108,
         BITMAPV5HEADER: 124,
     };
-    const version = alpha ? 'BITMAPV4HEADER' : 'BITMAPCOREHEADER'; // V3 provides alpha on Chrome, but V4 required for Firefox
+    const version = alpha ? 'BITMAPV4HEADER' : 'BITMAPINFOHEADER'; // 'BITMAPCOREHEADER'; // V3 provides alpha on Chrome, but V4 required for Firefox
     if (!bmpHeaderSizeByVersion.hasOwnProperty(version))
         throw `Unknown BMP header version: ${version}`;
     const bmpHeaderSize = bmpHeaderSizeByVersion[version];
