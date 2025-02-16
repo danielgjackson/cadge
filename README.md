@@ -2,9 +2,9 @@
 
 *CD+Graphics* (CD+G) is an extension to audio CDs that adds a low resolution graphical layer, with the information embedded in otherwise unused bits of the data stream.  This has typically been used for Karaoke music to embed the lyrics as a low-resolution image of the rendered text.
 
-This project contains a library that to decode the data stream (separated from the music into .CDG files) into images over time.  
+This project contains a library that decodes the data stream (from .CDG files already separated from the music) into images over time.  These can optionally be shown as an animated render at the terminal.  
 
-Additional layers then to try to understand when lines of lyrics are added, when progress is made to show them as *sung*, and to recognize the text of the lyrics and extract them to other, [timed text](https://en.wikipedia.org/wiki/Timed_text), formats.
+Additional layers try to understand when lines of lyrics are added, when progress is made to show them as *sung*, and to recognize the text of the lyrics and extract them to a [timed text](https://en.wikipedia.org/wiki/Timed_text) format: [.LRC](https://en.wikipedia.org/wiki/LRC_(file_format)).
 
 
 ## Prerequisites
