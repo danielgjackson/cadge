@@ -1,4 +1,4 @@
-# CaDGe - *.CDG file Parser and Lyric Extractor*
+# CaDGe - *.CDG file parser, terminal player, lyric recognizer, and converter to timed .LRC files*
 
 *CD+Graphics* (CD+G) is an extension to audio CDs that adds a low resolution graphical layer, with the information embedded in otherwise unused bits of the data stream.  This has typically been used for Karaoke music to embed the lyrics as a low-resolution image of the rendered text.
 
