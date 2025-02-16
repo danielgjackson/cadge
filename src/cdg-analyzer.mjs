@@ -9,6 +9,7 @@ const defaultOptions = {
     foregroundSimilarity: 0.02,     // Treat as the same colour (should be a small difference)
     dilateRadius: 2,                // Number of pixels to dilate for row grouping
     corrections: {},
+    //tesseractPath: 'tesseract',
 };
 
 export class CdgAnalyzer {
@@ -23,7 +24,7 @@ export class CdgAnalyzer {
         this.newTileStats = null;
         this.rowGroups = {};        // .id .start .end
         this.groupIdCounter = 0;
-        this.textDetector = new TextDetectorNode();
+        this.textDetector = new TextDetectorNode(this.options);
 
         // Heuristics to detect screen type to avoid false lyric detection: null (unknown), 'image', 'text'
         this.screenType = null;
@@ -277,7 +278,7 @@ export class CdgAnalyzer {
         // Group deletions: split groups
         for (const group of newGroups) {
             if (Object.entries(group.previousGroupMapping).length > 1) {
-                Object.entries(group.previousGroupMapping).map(([previousId, _]) => { groupDeletions[previousId] = previousId; });
+                Object.entries(group.previousGroupMapping).map(([previousId, group]) => { groupDeletions[previousId] = group; });
             }
         }
         // Group deletions: no new group overlaps
@@ -644,6 +645,7 @@ export class CdgAnalyzer {
             changes.push({
                 action: 'group-chg',
                 groupId: group.id,
+                start: group.start,
             });
         }
 

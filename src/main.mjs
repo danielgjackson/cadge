@@ -1,8 +1,10 @@
 // Node.js CLI wrapper for CaDGe
 
 import fs from 'node:fs';
+import Path from 'path';
 import { CdgParser } from './cdg-parser.mjs';
 import { CdgAnalyzer } from './cdg-analyzer.mjs';
+import { CdgLyrics } from './cdg-lyrics.mjs';
 import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
 
@@ -21,14 +23,17 @@ const corrections = {
 // spell-checker:enable
 
 async function run(inputFile, options) {
-    console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
+    const baseFilename = Path.parse(inputFile).name;    // path.basename(inputFile, '.cdg');
+    //console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
+
     const data = fs.readFileSync(inputFile);
     const parser = new CdgParser(data, options);
     const analyzer = new CdgAnalyzer(parser, options);
+    const lyrics = new CdgLyrics(analyzer, options, baseFilename);
     
     // Negative times are relative to the end of the stream
-    if (options.analyseAfter != null && options.analyseAfter < 0) { options.analyseAfter += parser.getDuration(); }
-    if (options.analyseBefore != null && options.analyseBefore < 0) { options.analyseBefore += parser.getDuration(); }
+    if (options.analyzeAfter != null && options.analyzeAfter < 0) { options.analyzeAfter += parser.getDuration(); }
+    if (options.analyzeBefore != null && options.analyzeBefore < 0) { options.analyzeBefore += parser.getDuration(); }
 
     const reportInterval = 0;
     //let lastReported = null;
@@ -38,10 +43,10 @@ async function run(inputFile, options) {
     while (true) {
         const stepResult = analyzer.step([changeTrackCli]);
 
-        let applyResult = null;
-        if (options.analyseAfter == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time >= options.analyseAfter)) {
-            if (options.analyseBefore == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time < options.analyseBefore)) {
-                applyResult = await analyzer.applyChanges(stepResult);
+        let analyzerResult = null;
+        if (options.analyzeAfter == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time >= options.analyzeAfter)) {
+            if (options.analyzeBefore == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time < options.analyzeBefore)) {
+                analyzerResult = await analyzer.applyChanges(stepResult);
             }
         }
 
@@ -86,17 +91,24 @@ async function run(inputFile, options) {
             }
         }
 
-        if (options.analyseDump && applyResult) {
-            for (const change of applyResult.changes) {
-                // action: 'group-text', groupId: group.id, srcRect, dimensions, buffer
-                if (change.action == 'group-text') {
-                    const text = renderAnsiImage(change.buffer, change.dimensions.width, change.dimensions.height, false);
-                    process.stdout.write(text);
-                    delete change.buffer;
-                    console.log('LYRIC: ' + change.ocrResult.allText);
+        let lyricsResult = null;
+        if (analyzerResult) {
+
+            if (options.analyzeDump && analyzerResult) {
+                for (const change of analyzerResult.changes) {
+                    // action: 'group-text', groupId: group.id, srcRect, dimensions, buffer
+                    if (change.action == 'group-text') {
+                        const text = renderAnsiImage(change.buffer, change.dimensions.width, change.dimensions.height, false);
+                        process.stdout.write(text);
+                        delete change.buffer;
+                        console.log('LYRIC: ' + change.ocrResult.allText);
+                    }
+                    console.log(JSON.stringify(change));
                 }
-                console.log(JSON.stringify(change));
             }
+
+            lyricsResult = lyrics.step(analyzerResult);
+
         }
 
         // End of stream
@@ -110,6 +122,9 @@ async function run(inputFile, options) {
         }
     }
 
+    // Output lyrics
+    lyrics.dump();
+
     return 0;
 }
 
@@ -122,10 +137,11 @@ async function main(args) {
         rate: 1,
         errorUnhandledCommands: false,
         verbose: false,
-        analyseDump: false,
-        analyseAfter: null,
-        analyseBefore: null,
-        corrections
+        analyzeDump: false,
+        analyzeAfter: null,
+        analyzeBefore: null,
+        corrections,
+        tesseractPath: 'tesseract',
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {
@@ -134,16 +150,20 @@ async function main(args) {
             options.term = true;
         } else if (args[i] == '--verbose') {
             options.verbose = true;
-        } else if (args[i] == '--analyseDump') {
-            options.analyseDump = true;
-        } else if (args[i] == '--analyseAfter') {
-            options.analyseAfter = parseFloat(args[++i]);
-        } else if (args[i] == '--analyseBefore') {
-            options.analyseBefore = parseFloat(args[++i]);
+        } else if (args[i] == '--lyricsDump') {
+            options.lyricsDump = true;
+        } else if (args[i] == '--analyzeDump') {
+            options.analyzeDump = true;
+        } else if (args[i] == '--analyzeAfter') {
+            options.analyzeAfter = parseFloat(args[++i]);
+        } else if (args[i] == '--analyzeBefore') {
+            options.analyzeBefore = parseFloat(args[++i]);
         } else if (args[i] == '--maxDuration') {
             options.maxDuration = parseFloat(args[++i]);
         } else if (args[i] == '--rate') {
             options.rate = parseFloat(args[++i]);
+        } else if (args[i] == '--tesseractPath') {
+            options.tesseractPath = args[++i];
         } else if (args[i].startsWith('-')) {
             console.error('ERROR: Unknown option: ' + args[i]);
             help = true;

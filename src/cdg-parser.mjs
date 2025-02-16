@@ -49,7 +49,7 @@ export class CdgParser {
 
     static PACKET_SIZE = 24;
     static PACKETS_PER_SECOND = 300;
-
+    
     static CDG_COLORS = 16;
     static CDG_WIDTH = 300;     // 50 columns of tiles
     static CDG_HEIGHT = 216;    // 18 rows of tiles

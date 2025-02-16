@@ -2,3 +2,4 @@ node_modules
 _local
 .DS_Store
 *.log
+*.lrc

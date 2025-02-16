@@ -313,6 +313,9 @@ export class TextDetectorNode {
         const parsedHocr = TextDetectorNode._parseHOcr(hocr);
         //console.log(JSON.stringify(parsedHocr, null, 4));
         const detectedTexts = TextDetectorNode._convertHocrToDetectedTexts(parsedHocr);
+        if (recognizeOptions.keepHocr) {
+            detectedTexts._hocr = hocr;
+        }
         return detectedTexts;
     }
 
@@ -411,6 +414,7 @@ async function main(args) {
         pageSegmentationMode: null, // --psm single_line
         ocrEngineMode: null,        // --oem tesseract_only
         params: null,               // --param var=value
+        keepHocr: false,            // --hocr
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {
@@ -419,6 +423,9 @@ async function main(args) {
             format = 'json';
         } else if (args[i] == '--format:text') {
             format = 'text';
+        } else if (args[i] == '--format:hocr') {
+            options.keepHocr = true;
+            format = 'hocr';
         } else if (args[i] == '--lang') {
             options.lang = args[++i];
         } else if (args[i] == '--dpi') {
@@ -464,6 +471,8 @@ async function main(args) {
     const textResults = await textDetector.detect(imageBitmapSource, options);
     if (format == 'json') {
         console.log(JSON.stringify(textResults, null, 4));
+    } else if (format == 'hocr') {
+        console.log(textResults._hocr);
     } else {    // 'text'
         console.log(textResults.map(text => text.rawValue).join('\n'));
     }
