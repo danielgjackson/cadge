@@ -75,7 +75,7 @@ Tesseract installation:
 
 ```cmd
 @rem --psm single_line
-type test.bmp | "%LOCALAPPDATA%\Programs\Tesseract-OCR\tesseract.exe" %* - - quiet hocr > test.txt
+type test.bmp | tesseract - - quiet hocr > test.txt
 type test.txt
 ```
 

@@ -87,7 +87,16 @@ class DOMParser {
                     if (currentNode.innerText.length > 0) {
                         currentNode.innerText += ' ';
                     }
-                    currentNode.innerText += token.trim();
+                    let additionalText = token.trim();
+                    // Very hacky entity substitution
+                    additionalText = additionalText
+                        .replaceAll('&#60;', '<').replaceAll('&lt;', '<')
+                        .replaceAll('&#62;', '>').replaceAll('&gt;', '>')
+                        .replaceAll('&#34;', '"').replaceAll('&quot;', '"')
+                        .replaceAll('&#39;', "'").replaceAll('&apos;', "'")
+                        .replaceAll('&nbsp;', ' ')
+                        .replaceAll('&#38;', '&').replaceAll('&amp;', '&');
+                    currentNode.innerText += additionalText;
 
                     if (c == '<') {
                         newNode = new Node();
@@ -281,6 +290,14 @@ export class TextDetectorNode {
         // The imageBitmapSource could be one of: Blob, HTMLCanvasElement, HTMLImageElement, HTMLVideoElement, ImageBitmap, ImageData, OffscreenCanvas, SVGImageElement, VideoFrame.
         if ('data' in imageBitmapSource && 'width' in imageBitmapSource && 'height' in imageBitmapSource) { // ImageData
             imageBitmapSource = BitmapGenerate(imageBitmapSource.data, imageBitmapSource.width, imageBitmapSource.height, false); // .toString('latin1');
+
+            // DEBUG: Save image to file
+            if (0) {
+                if (this.debugBmpCount == null) this.debugBmpCount = 0;
+                const fs = (await import('fs')).promises;
+                await fs.writeFile('debug-' + this.debugBmpCount.toString().padStart(4, '0') + '.bmp', imageBitmapSource);
+                this.debugBmpCount++;
+            }
         }
         else if (imageBitmapSource[0] == 'B'.charCodeAt(0) && imageBitmapSource[1] == 'M'.charCodeAt(0)) { // BMP
             ; // Will work with .bmp data
@@ -309,10 +326,13 @@ export class TextDetectorNode {
         tesseractOptions.push('-');     // stdout
         if (options.lang) {
             tesseractOptions.push('-l');
-            tesseractOptions.push(lang);
+            tesseractOptions.push(options.lang);
         }
-        /*
-        if (options.segmentationMode) {
+        if (options.dpi) {
+            tesseractOptions.push('--dpi');
+            tesseractOptions.push(options.dpi.toString());
+        }
+        if (options.pageSegmentationMode) {
             // osd_only auto_osd auto_only auto single_column single_block_vert_text single_block single_line single_word circle_word single_char sparse_text sparse_text_osd raw_line
             const psmOptions = {
                 'osd_only': 0,
@@ -330,12 +350,30 @@ export class TextDetectorNode {
                 'sparse_text_osd': 12,
                 'raw_line': 13,
             };
-            tesseractOptions.push('psm');
-            tesseractOptions.push(psmOptions[options.segmentationMode] ?? options.segmentationMode);
+            tesseractOptions.push('--psm');
+            tesseractOptions.push(psmOptions[options.pageSegmentationMode].toString() ?? options.pageSegmentationMode);
         }
-        */
+        if (options.ocrEngineMode) {
+            // 0=tesseract_only 1=lstm_only 2=tesseract_lstm_combined, 3=default
+            const oemOptions = {
+                'tesseract_only': 0,
+                'lstm_only': 1,
+                'tesseract_lstm_combined': 2,
+                'default': 3,
+            };
+            tesseractOptions.push('--oem');
+            tesseractOptions.push(oemOptions[options.ocrEngineMode].toString() ?? options.ocrEngineMode);
+        }
+        if (options.params) {
+            for (const [name, value] of Object.entries(options.params)) {
+                tesseractOptions.push('-c');
+                tesseractOptions.push(name + '=' + (value == null ? '' : value));
+            }
+        }
+
         tesseractOptions.push('quiet');
         tesseractOptions.push('hocr');
+        if (0) console.log(JSON.stringify([tesseractPath, tesseractOptions]));
         const tesseract = spawn(tesseractPath, tesseractOptions);
         tesseract.stdin.write(imageBitmapSource);
         tesseract.stdin.end();
@@ -365,12 +403,37 @@ export class TextDetectorNode {
 async function main(args) {
     let positional = 0;
     let help = false;
+    let format = 'json';            // --format:json --format:text
     const options = {
         inputFile: null,
+        lang: null,                 // --lang eng
+        dpi: null,                  // --dpi
+        pageSegmentationMode: null, // --psm single_line
+        ocrEngineMode: null,        // --oem tesseract_only
+        params: null,               // --param var=value
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {
             help = true;
+        } else if (args[i] == '--format:json') {
+            format = 'json';
+        } else if (args[i] == '--format:text') {
+            format = 'text';
+        } else if (args[i] == '--lang') {
+            options.lang = args[++i];
+        } else if (args[i] == '--dpi') {
+            options.dpi = parseFloat(args[++i]);
+        } else if (args[i] == '--psm') {
+            options.pageSegmentationMode = args[++i];
+        } else if (args[i] == '--oem') {
+            options.ocrEngineMode = args[++i];
+        } else if (args[i] == '--param') {
+            const nameValue = args[++i];
+            let equals = nameValue.indexOf('=');
+            const name = nameValue.substring(0, equals < 0 ? nameValue.length : equals);
+            const value = equals < 0 ? null : nameValue.substring(equals + 1);
+            if (!options.params) options.params = {};
+            options.params[name] = value;
         } else if (args[i].startsWith('-')) {
             console.error('ERROR: Unknown option: ' + args[i]);
             help = true;
@@ -398,8 +461,12 @@ async function main(args) {
     const fs = (await import('fs')).promises;
     const imageBitmapSource = await fs.readFile(options.inputFile);
     const textDetector = new TextDetectorNode();
-    const textResults = await textDetector.detect(imageBitmapSource);
-    console.log(JSON.stringify(textResults, null, 4));
+    const textResults = await textDetector.detect(imageBitmapSource, options);
+    if (format == 'json') {
+        console.log(JSON.stringify(textResults, null, 4));
+    } else {    // 'text'
+        console.log(textResults.map(text => text.rawValue).join('\n'));
+    }
     return 0;
 }
 

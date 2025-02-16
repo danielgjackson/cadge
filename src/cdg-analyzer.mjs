@@ -8,6 +8,7 @@ const defaultOptions = {
     backgroundLumaSimilarity: 0.094, // Treat as background if within this threshold
     foregroundSimilarity: 0.02,     // Treat as the same colour (should be a small difference)
     dilateRadius: 2,                // Number of pixels to dilate for row grouping
+    corrections: {},
 };
 
 export class CdgAnalyzer {
@@ -23,6 +24,12 @@ export class CdgAnalyzer {
         this.rowGroups = {};        // .id .start .end
         this.groupIdCounter = 0;
         this.textDetector = new TextDetectorNode();
+
+        // Heuristics to detect screen type to avoid false lyric detection: null (unknown), 'image', 'text'
+        this.screenType = null;
+        this.lastTileRowCol = [null, null];
+        this.maxRowCol = [null, null];
+        this.tileEdits = new Array(CdgParser.CDG_HEIGHT).fill().map(() => (new Array(CdgParser.CDG_WIDTH).fill(0)));
     }
 
    
@@ -457,13 +464,101 @@ export class CdgAnalyzer {
     }
 
     async applyChanges(stepResult) {
-        const time = stepResult.parseResult.time
+        const time = stepResult.parseResult ? stepResult.parseResult.time : null;
         const changes = [];
         const applyResult = {
             stepResult,
             changes,
             time,
         };
+       
+        if (stepResult.parseResult && stepResult.parseResult.instruction != null) {
+            // Screen cleared
+            if (stepResult.parseResult.instruction == CdgParser.INSTRUCTION_MEMORY_PRESET && stepResult.parseResult.instructionData[1] == 0) {
+                // If image, detect text?
+                if (this.screenType == 'image') {
+                    // Full screen image before clearing
+                    // TODO: Detect text?
+                    // TODO: Recognize this before palette change? (fade out)
+                    //changes.push({ action: 'full-screen-image', data: this.parser.previousImage });
+                }
+
+                // Reset screen type to unknown
+                this.screenType = null;
+                this.lastTileRowCol = [null, null];
+                this.maxRowCol = [null, null];
+                for (let r = 0; r < CdgParser.CDG_HEIGHT; r++) {
+                    for (let c = 0; c < CdgParser.CDG_WIDTH; c++) {
+                        this.tileEdits[r][c] = 0;
+                    }
+                }
+
+                changes.push({ action: 'clear' });
+
+            }
+        }
+
+        let editHistory = null;
+        if (stepResult.parseResult && (stepResult.parseResult.instruction == CdgParser.INSTRUCTION_TILE_BLOCK || stepResult.parseResult.instruction == CdgParser.INSTRUCTION_TILE_BLOCK_XOR)) {
+            const xor = stepResult.parseResult.instruction == CdgParser.INSTRUCTION_TILE_BLOCK_XOR;
+            const colors = [
+                stepResult.parseResult.instructionData[0] & 0x0f,
+                stepResult.parseResult.instructionData[1] & 0x0f,
+            ];
+            const rowCol = [
+                stepResult.parseResult.instructionData[2],
+                stepResult.parseResult.instructionData[3],
+            ];
+
+            // Record write pattern
+            if (xor) {
+                this.tileEdits[rowCol[0]][rowCol[1]]++;
+            } else {
+                this.tileEdits[rowCol[0]][rowCol[1]] = 1;
+            }
+            editHistory = this.tileEdits[rowCol[0]][rowCol[1]];
+
+            // Heuristics to determine screen type
+            if (this.screenType == null) {
+                let detectedScreenType = null;
+
+                // Calculate heuristics
+                let heuristicAllSet = true;
+                //let heuristicNoneSet = false;
+                for (let r = 0; r < CdgParser.CDG_TILE_HEIGHT; r++) {
+                    const rowData = stepResult.parseResult.instructionData[4 + r] & 0x3f;
+                    if (rowData != 0x3f) { heuristicAllSet = false; }
+                    //if (rowData != 0x00) { heuristicNoneSet = false; }
+                }
+                let heuristicFirstTile = this.lastTileRowCol[0] == null;
+                let heuristicTopLeft = rowCol[0] == 1 && rowCol[1] == 1;
+                let heuristicSameColor = colors[0] == colors[1];
+
+                if (editHistory >= 3) {
+                    detectedScreenType = 'image';
+                }
+                
+                // Fingerprint heuristic of full screen drawing -- first tile, @(1,1) and background/foreground colors are the same, and all bits are set to color 1
+                if (!xor && heuristicAllSet && heuristicFirstTile && heuristicTopLeft && heuristicSameColor) {
+                    detectedScreenType = 'image';
+                }
+
+                // Heuristic of text
+                if (detectedScreenType == null && !heuristicFirstTile && rowCol[1] > 1) {
+                    detectedScreenType = 'text';
+                }
+
+                if (detectedScreenType != null) {
+                    changes.push({ action: 'screen-type', data: detectedScreenType });
+                    this.screenType = detectedScreenType;
+                }
+            }
+
+            this.lastTileRowCol = rowCol;
+            if (rowCol[0] > this.maxRowCol[0]) this.maxRowCol[0] = rowCol[0];
+            if (rowCol[1] > this.maxRowCol[1]) this.maxRowCol[1] = rowCol[1];
+        }
+
 
         // Apply group tile changes
         for (const groupTileChanges of stepResult.groupTileChanges) {
@@ -488,7 +583,7 @@ export class CdgAnalyzer {
             if (groupTileChanges.del.count) {
                 if (group.writingStart == null) group.erasingStart = time;
                 if (group.state != 'erasing') {
-                    if (group.state = 'progress') {
+                    if (group.state != 'progress') {
                         changes.push({ action: 'warning', groupId: group.id, description: 'Text erasing in an unexpected state: ' + group.state });
                     }
                     group.state = 'erasing';
@@ -509,12 +604,14 @@ export class CdgAnalyzer {
                             width: CdgParser.CDG_WIDTH,
                             height: group.end - group.start + 1 + 2,
                         };
-                        const buffer = this.imageRender(srcRect, { mono: 'invert', noBorder: true, renderBuffer: null });
-                        const dimensions = { width: srcRect.width, height: srcRect.height };
-                        const ocrResult = await this.detectText(buffer, dimensions.width, dimensions.height);
-                        changes.push({ 
-                            action: 'group-text', groupId: group.id, srcRect, dimensions, buffer, ocrResult
-                        });
+                        if (this.screenType == 'text') {
+                            const buffer = this.imageRender(srcRect, { mono: 'invert', noBorder: true, renderBuffer: null });
+                            const dimensions = { width: srcRect.width, height: srcRect.height };
+                            const ocrResult = await this.detectText(buffer, dimensions.width, dimensions.height);
+                            changes.push({ 
+                                action: 'group-text', groupId: group.id, srcRect, dimensions, buffer, ocrResult
+                            });
+                        }
                     } else {
                         changes.push({ action: 'warning', groupId: group.id, description: 'Text progress in an unexpected state: ' + group.state });
                     }
@@ -572,7 +669,9 @@ export class CdgAnalyzer {
             data: buffer, width, height
         };
         const detectedTextBlocks = await this.textDetector.detect(image, {
-            segmentationMode: 'single_line',
+            //lang: 'eng',
+            pageSegmentationMode: 'single_line',
+            //ocrEngineMode: 'tesseract_only',
         });
         const result = {
             allText: null,
@@ -583,12 +682,29 @@ export class CdgAnalyzer {
             // detectedText.boundingBox.{x, y, width, height, top, right, bottom, left}
             // detectedText.cornerPoints[0..3].{x, y}
             // detectedText.rawValue
-            result.texts.push(detectedText);
+            let allWords = [];
             if (detectedText._words) {
                 for (const word of detectedText._words) {
+
+                    // Apply corrections
+                    if (this.options.corrections && word.rawValue in this.options.corrections) {
+                        word.originalValue = word.rawValue;
+                        word.rawValue = this.options.corrections[word.rawValue];
+                    }
+                    
                     result.words.push(word);    // word._confidence .rawValue
+                    allWords.push(word.rawValue);
                 }
             }
+
+            // Apply corrections
+            const joinedWords = allWords.join(' ');
+            if (detectedText.rawValue != joinedWords) {
+                detectedText.originalValue = detectedText.rawValue;
+                detectedText.rawValue = joinedWords;
+            }
+
+            result.texts.push(detectedText);
         }
         result.allText = result.texts.map(text => text.rawValue).join('\n');
         return result;

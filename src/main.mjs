@@ -6,6 +6,19 @@ import { CdgAnalyzer } from './cdg-analyzer.mjs';
 import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
 
+// spell-checker:disable
+const corrections = {
+    'metry': 'merry',
+    'youa': 'you a',
+    'anda': 'and a',
+    '»»»»': '>>>>',
+    'won’t': 'won\'t',
+    'YOu': 'YOU',
+    'IDO': 'I DO',
+    '‘Well': 'Well',
+    '‘You': 'You',
+};
+// spell-checker:enable
 
 async function run(inputFile, options) {
     console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
@@ -54,7 +67,7 @@ async function run(inputFile, options) {
         if (options.term && stepResult.parseResult && (stepResult.parseResult.packetNumber % considerPackets) == 0) {
             if (changeTrackCli.x != null) {
                 let buffer;
-                if (1) {
+                if (0) {
                     buffer = analyzer.imageRender(changeTrackCli, { mono: 'alpha', checkerboard: true });
                 } else {
                     buffer = parser.imageRender(changeTrackCli);
@@ -107,11 +120,12 @@ async function main(args) {
     const options = {
         term: false,
         rate: 1,
-        errorUnhandledCommands: true,
+        errorUnhandledCommands: false,
         verbose: false,
-        analyseDump: true,
+        analyseDump: false,
         analyseAfter: null,
         analyseBefore: null,
+        corrections
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {

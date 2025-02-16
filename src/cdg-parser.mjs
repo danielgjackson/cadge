@@ -60,6 +60,7 @@ export class CdgParser {
 
     static DATA_MASK = 0x3f;
     static DATA_OFFSET = 4;
+    static DATA_SIZE = 16;
 
     static COMMAND_NONE = 0;
     static COMMAND_CDG = 9;
@@ -73,6 +74,7 @@ export class CdgParser {
     static INSTRUCTION_LOAD_COLOR_TABLE_LOWER = 30;
     static INSTRUCTION_LOAD_COLOR_TABLE_UPPER = 31;
     static INSTRUCTION_TILE_BLOCK_XOR = 38;
+    //static INSTRUCTION_UNKNOWN_19 = 19;
 
     constructor(data, options = {}) {
         this.data = data;  // UInt8Array
@@ -85,7 +87,7 @@ export class CdgParser {
         this.palette = new Uint8Array(CdgParser.CDG_COLORS * 4);
         // Store as 1 byte per pixel, but only the lower 4 bits are used for the color index
         this.image = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT);
-        this.previousImage = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT);    // Used for scrolling
+        this.previousImage = new Uint8Array(CdgParser.CDG_WIDTH * CdgParser.CDG_HEIGHT);    // Used for scrolling and remembering before-cleared state
         // To aid tile change tracking
         this.oldTile = new Uint8Array(CdgParser.CDG_TILE_WIDTH * CdgParser.CDG_TILE_HEIGHT);
         this.newTile = new Uint8Array(CdgParser.CDG_TILE_WIDTH * CdgParser.CDG_TILE_HEIGHT);
@@ -217,8 +219,10 @@ export class CdgParser {
             time: this.getTime(),
             cleared: null,
             paletteChanged: false,
+            instruction: null,
+            instructionData: null,
         }
-        if (this.options.verbose) console.log('#' + returnValue.packetNumber + ' @' + returnValue.time + ' - ');
+        if (this.options.verbose) console.log('#' + returnValue.packetNumber + ' @' + returnValue.time.toFixed(3) + ' - ');
 
         // Extract packet
         const offset = this.byteOffset();
@@ -231,12 +235,13 @@ export class CdgParser {
         }
 
         const command = packet[0];
-        let instruction = null;
         if (command == CdgParser.COMMAND_NONE) {
             //if (this.options.verbose) console.log('COMMAND_NONE');
         } else if (command == CdgParser.COMMAND_CDG) {
             //if (this.options.verbose) console.log('COMMAND_CDG');
-            instruction = packet[1];
+            const instruction = packet[1];
+            returnValue.instruction = instruction;
+            returnValue.instructionData = packet.slice(CdgParser.DATA_OFFSET, CdgParser.DATA_OFFSET + CdgParser.DATA_SIZE);
             if (instruction == CdgParser.INSTRUCTION_MEMORY_PRESET) {
                 const color = packet[CdgParser.DATA_OFFSET + 0] & 0x0f;
                 const repeat = packet[CdgParser.DATA_OFFSET + 1];
@@ -244,6 +249,9 @@ export class CdgParser {
                 //if (this.options.verbose) console.log('... ' + packet[CdgParser.DATA_OFFSET + 2] + ', ' + packet[CdgParser.DATA_OFFSET + 3]);
                 // Only follow the first command, and not repeats (assumes no errors in stream)
                 if (repeat == 0) {
+                    // Copy current image to previous image (for analysis)
+                    this.previousImage.set(this.image);
+                    // Clear
                     this.imageClear(color);
                     changes = true;
                     // The cleared color is almost certainly going to form the background of any image
@@ -377,10 +385,19 @@ export class CdgParser {
                 }
                 returnValue.paletteChanged = true;  // palette changed
                 changes = true;
+            // } else if (instruction == CdgParser.INSTRUCTION_UNKNOWN_19) {
+            //     const unknownData = packet.slice(CdgParser.DATA_OFFSET, CdgParser.DATA_OFFSET + CdgParser.DATA_SIZE);
+            //     if (this.options.verbose) console.log('INSTRUCTION_UNKNOWN_19 ' + JSON.stringify(unknownData));
             } else {
-                if (this.options.verbose) console.log('WARNING: Unknown CDG instruction: ' + instruction);
-                if (this.options.errorUnhandledCommands) console.error('ERROR: Unknown CDG instruction: ' + instruction); process.exit(1);
-                instruction = null;
+                const unknownData = packet.slice(CdgParser.DATA_OFFSET, CdgParser.DATA_OFFSET + CdgParser.DATA_SIZE);
+                if (this.options.verbose) {
+                    console.log('WARNING: Unknown CDG instruction: ' + instruction + ' ' + JSON.stringify(unknownData));
+                }
+                if (this.options.errorUnhandledCommands) {
+                    console.error('ERROR: Unknown CDG instruction: ' + instruction + ' ' + JSON.stringify(unknownData));
+                    process.exit(1);
+                }
+                returnValue.instruction = null;
             }
 
         } else {
@@ -396,13 +413,12 @@ export class CdgParser {
             changeRect = { x: 0, y: 0, width: CdgParser.CDG_WIDTH, height: CdgParser.CDG_HEIGHT };
         }
 
-        returnValue.instruction = instruction;
         returnValue.changes = changes;
         returnValue.changeRect = changeRect;
 
         this.packetNumber++;
 
-        return returnValue;;
+        return returnValue;
     }
     
 
