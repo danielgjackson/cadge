@@ -9,7 +9,6 @@ const defaultOptions = {
     foregroundSimilarity: 0.02,     // Treat as the same colour (should be a small difference)
     dilateRadius: 2,                // Number of pixels to dilate for row grouping
     corrections: {},
-    //tesseractPath: 'tesseract',
 };
 
 export class CdgAnalyzer {
@@ -24,7 +23,7 @@ export class CdgAnalyzer {
         this.newTileStats = null;
         this.rowGroups = {};        // .id .start .end
         this.groupIdCounter = 0;
-        this.textDetector = new TextDetectorNode(this.options);
+        this.textDetector = new TextDetectorNode(this.options.textDetector);
 
         // Heuristics to detect screen type to avoid false lyric detection: null (unknown), 'image', 'text'
         this.screenType = null;
@@ -670,11 +669,13 @@ export class CdgAnalyzer {
         const image = {     // ImageData
             data: buffer, width, height
         };
-        const detectedTextBlocks = await this.textDetector.detect(image, {
+        const detectOptions = Object.assign({
             //lang: 'eng',
             pageSegmentationMode: 'single_line',
             //ocrEngineMode: 'tesseract_only',
-        });
+        }, this.options.detectOptions);
+
+        const detectedTextBlocks = await this.textDetector.detect(image, detectOptions);
         const result = {
             allText: null,
             texts: [],

@@ -34,7 +34,7 @@ node src/main.mjs $FILENAME.cdg > $FILENAME.lrc
 To *play* a `.cdg` file in your terminal window, zoom out to ensure your terminal is at least 300x108 characters in size (add `--rate 1` option to change the playback speed):
 
 ```bash
-node src/main.mjs --term $FILENAME.cdg
+node src/main.mjs --no-lyrics --term $FILENAME.cdg
 ```
 
 
@@ -72,6 +72,12 @@ Rough design for lyric analysis:
 * [x] Heuristics to ignore non-lyric graphical screens.
 
 * [x] Lyrics output e.g. in an .LRC file format.
+
+### To do?
+
+* [ ] Add empty .LRC lines when there is a significant gap in the lyrics and/or if the display currently has no lyrics.
+
+* [ ] Merge lines to single lyric lines.  CDG lines tend to be short to fit to the display, whereas a true line of lyrics may be longer.  Heuristics may be that that new lines tend to start above previous lines, may start with a capital letter, and may follow punctuation.
 
 
 ## Related Information
@@ -115,9 +121,9 @@ Test:
 
 ```
 node src/main.mjs --term --rate 5 _local/data/test.cdg
-node src/main.mjs --analyzeDump --analyzeAfter 12 --analyzeBefore -13.5 _local/data/test.cdg
-node src/main.mjs --analyzeDump _local/data/test.cdg --verbose --maxDuration 2.2
-node src/main.mjs --lyricsDump _local/data/test.cdg --maxDuration 20
+node src/main.mjs --analyze-dump --analyzeAfter 12 --analyzeBefore -13.5 _local/data/test.cdg
+node src/main.mjs --analyze-dump _local/data/test.cdg --verbose --maxDuration 2.2
+node src/main.mjs --lyrics-dump _local/data/test.cdg --maxDuration 20
 node src/main.mjs _local/data/test.cdg > test.lrc
 ```
 

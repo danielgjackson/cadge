@@ -27,9 +27,9 @@ async function run(inputFile, options) {
     //console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
 
     const data = fs.readFileSync(inputFile);
-    const parser = new CdgParser(data, options);
-    const analyzer = new CdgAnalyzer(parser, options);
-    const lyrics = new CdgLyrics(analyzer, options, baseFilename);
+    const parser = new CdgParser(data, options.parserOptions);
+    const analyzer = new CdgAnalyzer(parser, options.analyzerOptions);
+    const lyrics = new CdgLyrics(analyzer, options.lyricsOptions, baseFilename);
     
     // Negative times are relative to the end of the stream
     if (options.analyzeAfter != null && options.analyzeAfter < 0) { options.analyzeAfter += parser.getDuration(); }
@@ -123,7 +123,9 @@ async function run(inputFile, options) {
     }
 
     // Output lyrics
-    lyrics.dump();
+    if (options.lyricsOutput) {
+        lyrics.outputLrc(options.lrcOptions);
+    }
 
     return 0;
 }
@@ -133,15 +135,37 @@ async function main(args) {
     let positional = 0;
     let help = false;
     const options = {
+        // Terminal playback
         term: false,
         rate: 1,
-        errorUnhandledCommands: false,
-        verbose: false,
+        // Output/restrict analysis
         analyzeDump: false,
         analyzeAfter: null,
         analyzeBefore: null,
-        corrections,
-        tesseractPath: 'tesseract',
+        // Output .LRC lyrics
+        lyricsOutput: true,
+        lrcOptions: {
+            wordStarts: true,   // false=none, true=all, 1=first only
+            wordEnds: true,     // false=none, true=all, 1=last only
+        },
+        // Options to cdg-parser
+        parserOptions: {
+            verbose: false,
+            errorUnhandledCommands: false,
+        },
+        // Options to cdg-analyzer
+        analyzerOptions: {
+            corrections,
+            textDetector: {
+            },
+            detectOptions: {
+                tesseractPath: 'tesseract',
+            },
+        },
+        // Options to cdg-lyrics
+        lyricsOptions: {
+            lyricsDump: false,
+        },
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {
@@ -149,21 +173,42 @@ async function main(args) {
         } else if (args[i] == '--term') {
             options.term = true;
         } else if (args[i] == '--verbose') {
-            options.verbose = true;
-        } else if (args[i] == '--lyricsDump') {
-            options.lyricsDump = true;
-        } else if (args[i] == '--analyzeDump') {
+            options.parserOptions.verbose = true;
+        } else if (args[i] == '--lyrics-dump') {
+            options.lyricsOptions.lyricsDump = true;
+        } else if (args[i] == '--no-lyrics') {
+            options.lyricsOutput = false;
+            options.analyzerOptions.detectOptions.tesseractPath = null;     // disable OCR
+        } else if (args[i] == '--word-time:none') {
+            options.lrcOptions.wordStarts = false;
+            options.lrcOptions.wordEnds = false;
+        } else if (args[i] == '--word-time:start-and-end') {    // default
+            options.lrcOptions.wordStarts = true;
+            options.lrcOptions.wordEnds = true;
+        } else if (args[i] == '--word-time:start') {    // probably the expected for enhanced LRC?
+            options.lrcOptions.wordStarts = true;
+            options.lrcOptions.wordEnds = false;
+        } else if (args[i] == '--word-time:end') {
+            options.lrcOptions.wordStarts = false;
+            options.lrcOptions.wordEnds = true;
+        } else if (args[i] == '--word-time:start-and-last') {
+            options.lrcOptions.wordStarts = true;
+            options.lrcOptions.wordEnds = 1;
+        } else if (args[i] == '--word-time:end-and-first') {
+            options.lrcOptions.wordStarts = 1;
+            options.lrcOptions.wordEnds = true;
+        } else if (args[i] == '--analyze-dump') {
             options.analyzeDump = true;
-        } else if (args[i] == '--analyzeAfter') {
+        } else if (args[i] == '--analyze-after') {
             options.analyzeAfter = parseFloat(args[++i]);
-        } else if (args[i] == '--analyzeBefore') {
+        } else if (args[i] == '--analyze-before') {
             options.analyzeBefore = parseFloat(args[++i]);
-        } else if (args[i] == '--maxDuration') {
+        } else if (args[i] == '--max-duration') {
             options.maxDuration = parseFloat(args[++i]);
         } else if (args[i] == '--rate') {
             options.rate = parseFloat(args[++i]);
-        } else if (args[i] == '--tesseractPath') {
-            options.tesseractPath = args[++i];
+        } else if (args[i] == '--tesseract-path') {
+            options.analyzerOptions.detectOptions.tesseractPath = args[++i];
         } else if (args[i].startsWith('-')) {
             console.error('ERROR: Unknown option: ' + args[i]);
             help = true;
@@ -184,7 +229,13 @@ async function main(args) {
     if (help) {
         console.log('CaDGe - .CDG file Parser and Lyric Extractor');
         console.log('');
-        console.log('Options: <input file>');
+        console.log('Usage - convert from .CDG to .LRC:');
+        console.log('');
+        console.log('\tnode src/main.mjs FILENAME.cdg > FILENAME.lrc');
+        console.log('');
+        console.log('Usage - play .CDG in terminal (resize window to >= 300x108 characters):');
+        console.log('');
+        console.log('\tnode src/main.mjs --no-lyrics --rate 1 --term FILENAME.cdg');
         console.log('');
         return 1;
     }

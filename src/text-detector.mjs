@@ -323,7 +323,12 @@ export class TextDetectorNode {
     async _recognize(imageBitmapSource, options) {
         // Open tesseract process, pipe image data to stdin, read stdout, store return code
         const { spawn } = await import('node:child_process');
-        const tesseractPath = this.options.tesseractPath;
+        options = Object.assign({}, this.options, options);
+        // If OCR disabled...
+        if (options.tesseractPath == null) {
+            return '';
+        }
+        const tesseractPath = options.tesseractPath;
         const tesseractOptions = [];
         tesseractOptions.push('-');     // stdin
         tesseractOptions.push('-');     // stdout
