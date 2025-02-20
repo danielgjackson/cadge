@@ -74,8 +74,7 @@ export class CdgParser {
     static INSTRUCTION_LOAD_COLOR_TABLE_LOWER = 30;
     static INSTRUCTION_LOAD_COLOR_TABLE_UPPER = 31;
     static INSTRUCTION_TILE_BLOCK_XOR = 38;
-    //static INSTRUCTION_UNKNOWN_19 = 19;
-
+    
     constructor(data, options = {}) {
         this.data = data;  // UInt8Array
         this.options = Object.assign(defaultOptions, options);
@@ -385,9 +384,6 @@ export class CdgParser {
                 }
                 returnValue.paletteChanged = true;  // palette changed
                 changes = true;
-            // } else if (instruction == CdgParser.INSTRUCTION_UNKNOWN_19) {
-            //     const unknownData = packet.slice(CdgParser.DATA_OFFSET, CdgParser.DATA_OFFSET + CdgParser.DATA_SIZE);
-            //     if (this.options.verbose) console.log('INSTRUCTION_UNKNOWN_19 ' + JSON.stringify(unknownData));
             } else {
                 const unknownData = packet.slice(CdgParser.DATA_OFFSET, CdgParser.DATA_OFFSET + CdgParser.DATA_SIZE);
                 if (this.options.verbose) {

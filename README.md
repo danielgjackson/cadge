@@ -87,6 +87,8 @@ Rough design for lyric analysis:
   * https://goughlui.com/2019/03/31/tech-flashback-the-cdgraphics-format-cdg/
   * https://jbum.com/cdg_revealed.html
   * https://www.cdgfix.com/help/3.x/Technical_information/The_CDG_graphics_format.htm
+    * https://www.cdgfix.com/
+  * https://github.com/hcs64/cdgraphics
 
 * Timed text formats: https://en.wikipedia.org/wiki/Timed_text
   * .LRC: 
@@ -97,7 +99,13 @@ Rough design for lyric analysis:
   * WebVTT
     * https://en.wikipedia.org/wiki/WebVTT
 
+* CD tools
+  * https://forums.sonicretro.org/index.php?posts/1084213/
+  * https://github.com/superg/redumper/
+  * https://github.com/hcs64/redumper-extract-rw
+
 * CD+EG Extended Graphics, from: https://extended.graphics/#tech
+  * https://github.com/hcs64/cdgraphics/tree/cd-eg
   * Adds an extra video buffer, doubling the video memory
   * This can be used for full 8 bit (256 color) graphics, or the two buffers can be used for independent 4 bit (16 color) images. 
   * When used independently, one buffer can written while the other is displaying, then they can be instantly switched. 
