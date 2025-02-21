@@ -30,6 +30,7 @@ export class CdgAnalyzer {
         this.lastTileRowCol = [null, null];
         this.maxRowCol = [null, null];
         this.tileEdits = new Array(CdgParser.CDG_HEIGHT).fill().map(() => (new Array(CdgParser.CDG_WIDTH).fill(0)));
+        this.textCount = 0;
     }
 
    
@@ -487,6 +488,7 @@ export class CdgAnalyzer {
                 this.screenType = null;
                 this.lastTileRowCol = [null, null];
                 this.maxRowCol = [null, null];
+                this.textCount = 0;
                 for (let r = 0; r < CdgParser.CDG_HEIGHT; r++) {
                     for (let c = 0; c < CdgParser.CDG_WIDTH; c++) {
                         this.tileEdits[r][c] = 0;
@@ -544,8 +546,11 @@ export class CdgAnalyzer {
                 }
 
                 // Heuristic of text
-                if (detectedScreenType == null && !heuristicFirstTile && rowCol[1] > 1) {
-                    detectedScreenType = 'text';
+                if (detectedScreenType == null && !heuristicFirstTile && rowCol[1] > 1 && editHistory == 1) {
+                    this.textCount++;
+                    if (this.textCount >= 3) {
+                        detectedScreenType = 'text';
+                    }
                 }
 
                 if (detectedScreenType != null) {

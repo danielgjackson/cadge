@@ -19,6 +19,7 @@ const corrections = {
     'IDO': 'I DO',
     '‘Well': 'Well',
     '‘You': 'You',
+    '@eeeOne': 'One',
 };
 // spell-checker:enable
 
