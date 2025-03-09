@@ -7,21 +7,7 @@ import { CdgAnalyzer } from './cdg-analyzer.mjs';
 import { CdgLyrics } from './cdg-lyrics.mjs';
 import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
-
-// spell-checker:disable
-const corrections = {
-    'metry': 'merry',
-    'youa': 'you a',
-    'anda': 'and a',
-    '»»»»': '>>>>',
-    'won’t': 'won\'t',
-    'YOu': 'YOU',
-    'IDO': 'I DO',
-    '‘Well': 'Well',
-    '‘You': 'You',
-    '@eeeOne': 'One',
-};
-// spell-checker:enable
+import { corrections } from './corrections.mjs';
 
 async function run(inputFile, options) {
     const baseFilename = Path.parse(inputFile).name;    // path.basename(inputFile, '.cdg');

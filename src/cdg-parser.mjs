@@ -398,7 +398,10 @@ export class CdgParser {
 
         } else {
             if (this.options.verbose) console.log('WARNING: Unknown subcode command: ' + command);
-            if (this.options.errorUnhandledCommands) console.error('ERROR: Unknown subcode command: ' + command); process.exit(1);
+            if (this.options.errorUnhandledCommands) {
+                console.error('ERROR: Unknown subcode command: ' + command);
+                process.exit(1);
+            }
         }
 
         // Normalize changes as a rectangle
