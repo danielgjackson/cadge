@@ -8,7 +8,9 @@ const defaultOptions = {
     backgroundLumaSimilarity: 0.094, // Treat as background if within this threshold
     foregroundSimilarity: 0.02,     // Treat as the same colour (should be a small difference)
     dilateRadius: 2,                // Number of pixels to dilate for row grouping
-    corrections: {},
+    wordCorrections: {},
+    letterCorrections: {},
+    splitRuns: true,                // Split runs of certain symbols into separate words
 };
 
 export class CdgAnalyzer {
@@ -31,6 +33,7 @@ export class CdgAnalyzer {
         this.maxRowCol = [null, null];
         this.tileEdits = new Array(CdgParser.CDG_HEIGHT).fill().map(() => (new Array(CdgParser.CDG_WIDTH).fill(0)));
         this.textCount = 0;
+        this.imageCount = 0;
     }
 
    
@@ -489,6 +492,7 @@ export class CdgAnalyzer {
                 this.lastTileRowCol = [null, null];
                 this.maxRowCol = [null, null];
                 this.textCount = 0;
+                this.imageCount = 0;
                 for (let r = 0; r < CdgParser.CDG_HEIGHT; r++) {
                     for (let c = 0; c < CdgParser.CDG_WIDTH; c++) {
                         this.tileEdits[r][c] = 0;
@@ -545,10 +549,18 @@ export class CdgAnalyzer {
                     detectedScreenType = 'image';
                 }
 
+                // Fingerprint heuristic of full screen drawing -- all bits are set to color 1
+                if (detectedScreenType == null && !xor && heuristicAllSet && heuristicSameColor) {
+                    this.imageCount++;
+                    if (this.imageCount >= 5) {
+                        detectedScreenType = 'image';
+                    }
+                }
+
                 // Heuristic of text
-                if (detectedScreenType == null && !heuristicFirstTile && rowCol[1] > 1 && editHistory == 1) {
+                if (detectedScreenType == null && !heuristicAllSet && !heuristicFirstTile && rowCol[1] > 1 && editHistory == 1) {
                     this.textCount++;
-                    if (this.textCount >= 3) {
+                    if (this.textCount >= 8) {
                         detectedScreenType = 'text';
                     }
                 }
@@ -694,10 +706,39 @@ export class CdgAnalyzer {
             if (detectedText._words) {
                 for (const word of detectedText._words) {
 
-                    // Apply corrections
-                    if (this.options.corrections && word.rawValue in this.options.corrections) {
-                        word.originalValue = word.rawValue;
-                        word.rawValue = this.options.corrections[word.rawValue];
+                    // Apply whole-word corrections
+                    if (this.options.wordCorrections && word.rawValue in this.options.wordCorrections) {
+                        if (!word.originalValue) word.originalValue = word.rawValue;
+                        word.rawValue = this.options.wordCorrections[word.rawValue];
+                    }
+
+                    // Apply single letter corrections
+                    if (this.options.letterCorrections) {
+                        // For each letter in the dictionary
+                        for (const letter in this.options.letterCorrections) {
+                            if (word.rawValue.includes(letter)) {
+                                if (!word.originalValue) word.originalValue = word.rawValue;
+                                word.rawValue = word.rawValue.replaceAll(letter, this.options.letterCorrections[letter]);
+                            }
+                        }
+                    }
+
+                    // Split runs of certain symbols
+                    if (this.options.splitRuns) {
+                        const repeatedDots = /[-.>*]{2,}/g;
+                        let changes = false;
+                        let match;
+                        while ((match = repeatedDots.exec(word.rawValue)) !== null) {
+                            if (!word.originalValue) word.originalValue = word.rawValue;
+                            // Replace the match with the same string but with spaces around it
+                            const replacement = ' ' + match[0] + ' ';
+                            word.rawValue = word.rawValue.slice(0, match.index) + replacement + word.rawValue.slice(match.index + match[0].length);
+                            changes = true;
+                        }
+                        // Remove duplicate spaces
+                        if (changes) {
+                            word.rawValue = word.rawValue.replace(/\s+/g, ' ').trim();
+                        }
                     }
                     
                     result.words.push(word);    // word._confidence .rawValue

@@ -7,7 +7,7 @@ import { CdgAnalyzer } from './cdg-analyzer.mjs';
 import { CdgLyrics } from './cdg-lyrics.mjs';
 import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
-import { corrections } from './corrections.mjs';
+import { wordCorrections, letterCorrections } from './corrections.mjs';
 
 async function run(inputFile, options) {
     const baseFilename = Path.parse(inputFile).name;    // path.basename(inputFile, '.cdg');
@@ -33,6 +33,13 @@ async function run(inputFile, options) {
         let analyzerResult = null;
         if (options.analyzeAfter == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time >= options.analyzeAfter)) {
             if (options.analyzeBefore == null || (stepResult && stepResult.parseResult && stepResult.parseResult.time < options.analyzeBefore)) {
+
+                // HACK: Turn on verbosity only during analysis
+                if (options.analyzeVerbose) {
+                    options.parserOptions.verbose = true;
+                    parser.options.verbose = options.parserOptions.verbose;
+                }
+
                 analyzerResult = await analyzer.applyChanges(stepResult);
             }
         }
@@ -129,6 +136,7 @@ async function main(args) {
         analyzeDump: false,
         analyzeAfter: null,
         analyzeBefore: null,
+        analyzeVerbose: false,
         // Output .LRC lyrics
         lyricsOutput: true,
         lrcOptions: {
@@ -142,7 +150,9 @@ async function main(args) {
         },
         // Options to cdg-analyzer
         analyzerOptions: {
-            corrections,
+            wordCorrections,
+            letterCorrections,
+            splitRuns: true,
             textDetector: {
             },
             detectOptions: {
@@ -190,6 +200,12 @@ async function main(args) {
             options.analyzeAfter = parseFloat(args[++i]);
         } else if (args[i] == '--analyze-before') {
             options.analyzeBefore = parseFloat(args[++i]);
+        } else if (args[i] == '--analyze-verbose') {
+            options.analyzeVerbose = true;
+        } else if (args[i] == '--no-corrections') {
+            options.analyzerOptions.wordCorrections = {};
+            options.analyzerOptions.letterCorrections = {};
+            options.analyzerOptions.splitRuns = false;
         } else if (args[i] == '--max-duration') {
             options.maxDuration = parseFloat(args[++i]);
         } else if (args[i] == '--rate') {
