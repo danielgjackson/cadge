@@ -13,6 +13,7 @@ export const wordCorrections = {
     'onher': 'on her',
     'oldman': 'old man',
     'alittle': 'a little',
+    'alot': 'a lot',
     'adream': 'a dream',
     'yourABC': 'your ABC',
     'Il': 'I',
@@ -126,7 +127,8 @@ export const wordCorrections = {
     '(Female Singer)': '',
     '(Male Singer)': '',
 
-    'Lo...ove': 'love',
+    'Lo...ove,': 'Love,',
+    'Lo...ove': 'Love',
     'lo...ove': 'love',
     'lo...ove,': 'love',
     'No...no...no,': 'no no no',
