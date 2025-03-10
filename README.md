@@ -136,3 +136,9 @@ node src/main.mjs _local/data/test.cdg > test.lrc
 ```
 
 -->
+
+<!--
+
+Preview .LRC files in Explorer:  reg add HKCU\SOFTWARE\Classes\.lrc /v PerceivedType /t REG_SZ /d text
+
+-->

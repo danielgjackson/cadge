@@ -8,16 +8,32 @@ import { CdgLyrics } from './cdg-lyrics.mjs';
 import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
 import { wordCorrections, letterCorrections } from './corrections.mjs';
+import { stdout } from 'node:process';
 
-async function run(inputFile, options) {
-    const baseFilename = Path.parse(inputFile).name;    // path.basename(inputFile, '.cdg');
+async function runOnce(inputFile, options) {
     //console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
 
+    let lrcFile = null;
+    if (options.writeLrc) {
+        const baseFile = inputFile.replace(/\.cdg$/i, '');
+        const testFile = baseFile + '.lrc';
+        if (!options.overwrite && fs.existsSync(testFile)) {
+            console.error('ERROR: Cannot overwrite existing file without option --overwrite, skipping: ' + testFile);
+            return 1;
+        }
+        if (testFile.toLowerCase() == inputFile.toLowerCase) {
+            console.error('ERROR: Cannot overwrite input file, skipping: ' + testFile);
+            return 1;
+        }
+        lrcFile = testFile;
+    }
+
+    const baseFilename = Path.parse(inputFile).name;    // path.basename(inputFile, '.cdg');
     const data = fs.readFileSync(inputFile);
     const parser = new CdgParser(data, options.parserOptions);
     const analyzer = new CdgAnalyzer(parser, options.analyzerOptions);
     const lyrics = new CdgLyrics(analyzer, options.lyricsOptions, baseFilename);
-    
+   
     // Negative times are relative to the end of the stream
     if (options.analyzeAfter != null && options.analyzeAfter < 0) { options.analyzeAfter += parser.getDuration(); }
     if (options.analyzeBefore != null && options.analyzeBefore < 0) { options.analyzeBefore += parser.getDuration(); }
@@ -117,15 +133,36 @@ async function run(inputFile, options) {
     }
 
     // Output lyrics
-    if (options.lyricsOutput) {
-        lyrics.outputLrc(options.lrcOptions);
+    if (lrcFile != null || options.lyricsOutput) {
+        const lrcData = lyrics.createLrc(options.lrcOptions);
+        if (lrcFile != null) {
+            fs.writeFileSync(lrcFile, lrcData);
+        } else {
+            console.log(lrcData.trimEnd());
+        }
     }
 
     return 0;
 }
 
+async function run(inputFiles, options) {
+    let errors = 0;
+    for (let i = 0; i < inputFiles.length; i++) {
+        const inputFile = inputFiles[i];
+        console.error('READ #' + (i + 1) + '/' + inputFiles.length + ': ' + inputFile);
+        const result = await runOnce(inputFile, options);
+        if (result != 0) {
+            console.error('ERROR: Failed with result ' + result + ' on input file: ' + inputFile);
+            errors++;
+        }
+    }
+    console.error('DONE (' + errors + ' errors): ' + inputFiles.length);
+    return errors;
+}
+
+
 async function main(args) {
-    let inputFile = null;
+    let inputFiles = [];
     let positional = 0;
     let help = false;
     const options = {
@@ -210,31 +247,45 @@ async function main(args) {
             options.maxDuration = parseFloat(args[++i]);
         } else if (args[i] == '--rate') {
             options.rate = parseFloat(args[++i]);
+        } else if (args[i] == '--lrc') {
+            options.writeLrc = true;
+        } else if (args[i] == '--overwrite') {
+            options.overwrite = true;
         } else if (args[i] == '--tesseract-path') {
             options.analyzerOptions.detectOptions.tesseractPath = args[++i];
         } else if (args[i].startsWith('-')) {
             console.error('ERROR: Unknown option: ' + args[i]);
             help = true;
         } else {
-            if (positional == 0) {
-                inputFile = args[i];
+            const path = args[i];
+            // If directory, include all *.cdg files in directory
+            if (fs.statSync(path).isDirectory()) {
+                const files = fs.readdirSync(path);
+                for (const file of files) {
+                    if (file.match(/\.cdg$/i)) {
+                        inputFiles.push(Path.join(path, file));
+                    }
+                }
             } else {
-                console.error('ERROR: Unexpected positional argument: ' + args[i]);
-                help = true;
+                inputFiles.push(path);
             }
             positional++;
         }
     }
-    if (inputFile === null) {
-        console.error('ERROR: Missing input file');
+    if (inputFiles.length == 0) {
+        console.error('ERROR: No input file(s) specified');
         help = true;
     }
     if (help) {
         console.log('CaDGe - .CDG file Parser and Lyric Extractor');
         console.log('');
-        console.log('Usage - convert from .CDG to .LRC:');
+        console.log('Usage - display .LRC for a .CDG file:');
         console.log('');
-        console.log('\tnode src/main.mjs FILENAME.cdg > FILENAME.lrc');
+        console.log('\tnode src/main.mjs FILENAME.cdg');
+        console.log('');
+        console.log('Usage - convert from .CDG to automatically-named .LRC:');
+        console.log('');
+        console.log('\tnode src/main.mjs --lrc FILENAME.cdg');
         console.log('');
         console.log('Usage - play .CDG in terminal (resize window to >= 300x108 characters):');
         console.log('');
@@ -242,7 +293,7 @@ async function main(args) {
         console.log('');
         return 1;
     }
-    return await run(inputFile, options);
+    return await run(inputFiles, options);
 }
 
 // From CLI, run with arguments and return exit code

@@ -144,7 +144,8 @@ export class CdgLyrics {
         return lyricsResult;
     }
 
-    outputLrc(options) {
+    createLrc(options) {
+        const lines = [];
         options = Object.assign({
             wordStarts: true,   // false=none, true=all, 1=first only
             wordEnds: true,     // false=none, true=all, 1=last only
@@ -169,13 +170,22 @@ export class CdgLyrics {
         }
 
         if (this.filename) {
-            //console.log('[#:filename:' + this.filename + ']')
-            console.log('[ti:' + this.filename + ']')
+            let title = this.filename;
+            let artist = null;
+            const titleParts = this.filename.split(' - ');
+            if (titleParts.length > 1) {
+                artist = titleParts.shift();
+                title = titleParts.join(' - ');
+            }
+            
+            //lines.push('[#:filename:' + this.filename + ']')
+            if (artist != null) { lines.push('[ar:' + artist + ']') }
+            lines.push('[ti:' + title + ']')
         }
-        console.log('[length:' + (Math.floor(Math.round(this.lastTime) / 60)) + ':' + (Math.round(this.lastTime) % 60).toString().padStart(2, '0') + ']')
-        console.log('[re:cadge]')
-        console.log('[ve:0.0.1]')
-        console.log('')
+        lines.push('[length:' + (Math.floor(Math.round(this.lastTime) / 60)) + ':' + (Math.round(this.lastTime) % 60).toString().padStart(2, '0') + ']')
+        lines.push('[re:cadge]')
+        lines.push('[ve:0.0.1]')
+        lines.push('')
         for (const line of this.lines) {
             const lineParts = [];
             if (line.words && line.words.length > 0) {
@@ -198,9 +208,10 @@ export class CdgLyrics {
                     }
                 }
                 const lineText = lineParts.join(' ');
-                console.log('[' + formatTime(line.timeProgress) + '] ' + lineText);
+                lines.push('[' + formatTime(line.timeProgress) + '] ' + lineText);
             }
         }
+        return lines.join('\n');
     }
 
 }

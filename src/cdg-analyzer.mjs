@@ -705,20 +705,19 @@ export class CdgAnalyzer {
             let allWords = [];
             if (detectedText._words) {
                 for (const word of detectedText._words) {
+                    let wordValue = word.rawValue;
 
                     // Apply whole-word corrections
-                    if (this.options.wordCorrections && word.rawValue in this.options.wordCorrections) {
-                        if (!word.originalValue) word.originalValue = word.rawValue;
-                        word.rawValue = this.options.wordCorrections[word.rawValue];
+                    if (this.options.wordCorrections && wordValue in this.options.wordCorrections) {
+                        wordValue = this.options.wordCorrections[wordValue];
                     }
 
                     // Apply single letter corrections
                     if (this.options.letterCorrections) {
                         // For each letter in the dictionary
                         for (const letter in this.options.letterCorrections) {
-                            if (word.rawValue.includes(letter)) {
-                                if (!word.originalValue) word.originalValue = word.rawValue;
-                                word.rawValue = word.rawValue.replaceAll(letter, this.options.letterCorrections[letter]);
+                            if (wordValue.includes(letter)) {
+                                wordValue = wordValue.replaceAll(letter, this.options.letterCorrections[letter]);
                             }
                         }
                     }
@@ -728,20 +727,54 @@ export class CdgAnalyzer {
                         const repeatedDots = /[-.>*]{2,}/g;
                         let changes = false;
                         let match;
-                        while ((match = repeatedDots.exec(word.rawValue)) !== null) {
-                            if (!word.originalValue) word.originalValue = word.rawValue;
+                        while ((match = repeatedDots.exec(wordValue)) !== null) {
                             // Replace the match with the same string but with spaces around it
                             const replacement = ' ' + match[0] + ' ';
-                            word.rawValue = word.rawValue.slice(0, match.index) + replacement + word.rawValue.slice(match.index + match[0].length);
+                            wordValue = wordValue.slice(0, match.index) + replacement + wordValue.slice(match.index + match[0].length);
                             changes = true;
                         }
                         // Remove duplicate spaces
                         if (changes) {
-                            word.rawValue = word.rawValue.replace(/\s+/g, ' ').trim();
+                            wordValue = wordValue.replace(/\s+/g, ' ').trim();
                         }
                     }
                     
-                    result.words.push(word);    // word._confidence .rawValue
+
+                    if (wordValue != word.rawValue) {
+                        // New word
+                        word.originalValue = word.rawValue;
+                        word.rawValue = wordValue;
+
+                        // Synthesize new words and bounding boxes based on replacements
+                        const newWords = wordValue.split(' ');
+                        let previousCharacters = 0;
+                        let totalCharacters = wordValue.length;
+                        for (const newWord of newWords) {
+                            if (newWord.length != 0) {
+                                let x0 = word.boundingBox.x + word.boundingBox.width * previousCharacters / totalCharacters;
+                                let x1 = word.boundingBox.x + word.boundingBox.width * (previousCharacters + newWord.length) / totalCharacters;
+                                const wordObj = {
+                                    rawValue: newWord,
+                                    //_confidence: word._confidence,
+                                    boundingBox: {
+                                        x: x0,
+                                        y: word.boundingBox.y,
+                                        width: x1 - x0,
+                                        height: word.boundingBox.height,
+                                        top: word.boundingBox.top,
+                                        right: x1,
+                                        bottom: word.boundingBox.bottom,
+                                        left: x0,
+                                    },
+                                };
+                                result.words.push(wordObj);
+                            }
+                            previousCharacters += newWord.length + 1;
+                        }
+                    } else {
+                        result.words.push(word);    // word._confidence .rawValue
+                    }
+                    
                     allWords.push(word.rawValue);
                 }
             }
