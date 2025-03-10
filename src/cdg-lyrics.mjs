@@ -170,12 +170,12 @@ export class CdgLyrics {
         }
 
         if (this.filename) {
-            let title = this.filename;
+            let title = this.filename.trim();
             title = title.replaceAll(/- \d+ -/g, '-');      // Remove track number part
             let artist = null;
             const titleParts = title.split(' - ');
             if (titleParts.length > 1) {
-                artist = titleParts.shift();
+                artist = titleParts.shift().trim();
                 title = titleParts.join(' - ');
             }
             
