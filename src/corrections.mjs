@@ -13,6 +13,7 @@ export const wordCorrections = {
     'witha': 'with a',
     'meta': 'met a',
     'onmy': 'on my',
+    'Ano': 'A no',
     'onher': 'on her',
     'oldman': 'old man',
     'alittle': 'a little',
