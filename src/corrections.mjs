@@ -82,6 +82,8 @@ export const wordCorrections = {
     '*#eee': '****',
     'ete': '****',
     'eee': '****',
+    'eee]': '****',
+    
     'eeee': '****',
     '@@¢e': '****',
     '«eee': '****',
@@ -146,6 +148,8 @@ export const wordCorrections = {
     'a...a...and': 'and',
     're...est': 'rest',
     'ooh...ooh': 'ooh ooh',
+    'o0': 'oo',
+    '00': 'oo',
     'o...on': 'on',
     'me...end': 'mend',
     'drie...ied': 'dried',
