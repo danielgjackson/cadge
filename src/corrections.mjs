@@ -96,6 +96,7 @@ export const wordCorrections = {
     'y>eoelfl': '>>>> If',
     '>>': '> >',
     'yyy': '>>>>',
+    '>rrPr': '>>>>',
     '»rr>': '>>>>',
     '>rrP': '>>>>',
     '>rrPr': '>>>>',
