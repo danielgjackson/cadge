@@ -171,7 +171,8 @@ export class CdgLyrics {
 
         if (this.filename) {
             let title = this.filename.trim();
-            title = title.replaceAll(/- \d+ -/g, '-');      // Remove track number part
+            title = title.replace(/^[A-Z]{2,5}\d{3,5} - /, '');  // Remove initial track ID
+            title = title.replaceAll(/- \d+ -/g, '-');           // Remove track number between artist and title
             let artist = null;
             const titleParts = title.split(' - ');
             if (titleParts.length > 1) {
