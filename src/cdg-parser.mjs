@@ -312,9 +312,9 @@ export class CdgParser {
 
                 const color = packet[CdgParser.DATA_OFFSET + 0] & 0x0f;
                 const hScrollCmd = (packet[CdgParser.DATA_OFFSET + 1] >> 4) & 0x03;                     // 0=none, 1=right +6, 2=left -6, 3=invalid
-                const hScrollOff = Math.min(packet[CdgParser.DATA_OFFSET + 1] & 0x07, CDG_TILE_WIDTH);
+                const hScrollOff = Math.min(packet[CdgParser.DATA_OFFSET + 1] & 0x07, CdgParser.CDG_TILE_WIDTH);
                 const vScrollCmd = (packet[CdgParser.DATA_OFFSET + 2] >> 4) & 0x03;                     // 0=none, 1=down +12, 2=up -12, 3=invalid
-                const vScrollOff = Math.min(packet[CdgParser.DATA_OFFSET + 2] & 0x0f, CDG_TILE_HEIGHT);
+                const vScrollOff = Math.min(packet[CdgParser.DATA_OFFSET + 2] & 0x0f, CdgParser.CDG_TILE_HEIGHT);
                 if (this.options.verbose) console.log('INSTRUCTION_SCROLL_PRESET ' + (doCopy ? 'COPY' : ' Normal') + ' ' + color + ' ' + hScrollCmd + ' ' + hScrollOff + ' ' + vScrollCmd + ' ' + vScrollOff);
 
                 // Update scroll offset
@@ -325,8 +325,8 @@ export class CdgParser {
                 }
 
                 // Scroll the buffer
-                const hScroll = hScrollCmd == 1 ? CDG_TILE_WIDTH : (hScrollCmd == 2 ? -CDG_TILE_WIDTH : 0);
-                const vScroll = vScrollCmd == 1 ? CDG_TILE_HEIGHT : (vScrollCmd == 2 ? -CDG_TILE_HEIGHT : 0);
+                const hScroll = hScrollCmd == 1 ? CdgParser.CDG_TILE_WIDTH : (hScrollCmd == 2 ? -CdgParser.CDG_TILE_WIDTH : 0);
+                const vScroll = vScrollCmd == 1 ? CdgParser.CDG_TILE_HEIGHT : (vScrollCmd == 2 ? -CdgParser.CDG_TILE_HEIGHT : 0);
                 if (hScroll != 0 || vScroll != 0) {
                     // Copy current image to previous image
                     this.previousImage.set(this.image);

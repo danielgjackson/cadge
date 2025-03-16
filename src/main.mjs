@@ -12,23 +12,44 @@ import { stdout } from 'node:process';
 
 async function runOnce(inputFile, options) {
     //console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
+    const baseFilename = Path.parse(inputFile).name;    // path.basename(inputFile, '.cdg');
 
     let lrcFile = null;
     if (options.writeLrc) {
-        const baseFile = inputFile.replace(/\.cdg$/i, '');
-        const testFile = baseFile + '.lrc';
-        if (!options.overwrite && fs.existsSync(testFile)) {
-            console.error('ERROR: Cannot overwrite existing file without option --overwrite, skipping: ' + testFile);
-            return 1;
+        const pathNoExt = inputFile.replace(/\.cdg$/i, '');
+        const testFile = pathNoExt + '.lrc';
+        const lrcExists = fs.existsSync(testFile);
+        let overwrite = options.overwrite;
+
+        if (lrcExists && !overwrite && options.overwriteOutdated) {
+            const proposedMetadata = CdgLyrics.createMetadata(baseFilename, options.lrcOptions);
+            const existingMetadata = CdgLyrics.readMetadata(testFile);
+            const renew = CdgLyrics.compareMetadata(existingMetadata, proposedMetadata);
+            if (renew) {
+                overwrite = true;
+            }
         }
+
         if (testFile.toLowerCase() == inputFile.toLowerCase) {
             console.error('ERROR: Cannot overwrite input file, skipping: ' + testFile);
             return 1;
         }
+
+        if (lrcExists && overwrite && !options.overwrite) {
+            console.error('NOTE: Overwriting outdated existing file (--overwrite-outdated): ' + testFile);
+        }
+        if (!overwrite && lrcExists) {
+            if (options.overwriteOutdated) {
+                console.error('ERROR: Not overwriting existing file that is not outdated (--overwrite-outdated), skipping: ' + testFile);
+            } else {
+                console.error('ERROR: Cannot overwrite existing file without option --overwrite (or --overwrite-outdated), skipping: ' + testFile);
+            }
+            return 1;
+        }
+
         lrcFile = testFile;
     }
 
-    const baseFilename = Path.parse(inputFile).name;    // path.basename(inputFile, '.cdg');
     const data = fs.readFileSync(inputFile);
     const parser = new CdgParser(data, options.parserOptions);
     const analyzer = new CdgAnalyzer(parser, options.analyzerOptions);
@@ -176,9 +197,12 @@ async function main(args) {
         analyzeVerbose: false,
         // Output .LRC lyrics
         lyricsOutput: true,
+        overwrite: false,
+        overwriteOutdated: false,
         lrcOptions: {
-            wordStarts: true,   // false=none, true=all, 1=first only
-            wordEnds: true,     // false=none, true=all, 1=last only
+            wordStarts: true,       // false=none, true=all, 1=first only
+            wordEnds: true,         // false=none, true=all, 1=last only
+            lyricsVersion: 1.0001,
         },
         // Options to cdg-parser
         parserOptions: {
@@ -251,6 +275,8 @@ async function main(args) {
             options.writeLrc = true;
         } else if (args[i] == '--overwrite') {
             options.overwrite = true;
+        } else if (args[i] == '--overwrite-outdated') {
+            options.overwriteOutdated = true;
         } else if (args[i] == '--tesseract-path') {
             options.analyzerOptions.detectOptions.tesseractPath = args[++i];
         } else if (args[i].startsWith('-')) {

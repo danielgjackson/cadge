@@ -1,6 +1,8 @@
 // .CDG Lyrics
 // Dan Jackson, 2025
 
+import fs from 'fs';
+
 const defaultOptions = {
     lyricsDump: false,
 }
@@ -144,11 +146,62 @@ export class CdgLyrics {
         return lyricsResult;
     }
 
+    static createMetadata(filename, options) {
+        const metadata = {};
+        if (filename) {
+            let title = filename.trim();
+            title = title.replace(/^[A-Z]{2,5}\d{3,5} - /, '');  // Remove initial track ID
+            title = title.replaceAll(/- \d+ -/g, '-');           // Remove track number between artist and title
+            let artist = null;
+            const titleParts = title.split(' - ');
+            if (titleParts.length > 1) {
+                artist = titleParts.shift().trim();
+                title = titleParts.join(' - ');
+            }
+            //metadata['#', 'filename:' + filename);
+            if (artist != null) { 
+                metadata['ar'] = artist;
+            }
+            metadata['ti'] = title;
+        }
+        metadata['re'] = 'cadge';
+        if (options.lyricsVersion) {
+            metadata['ve'] = options.lyricsVersion.toString();
+        }
+        return metadata;
+    }
+
+    static readMetadata(filename) {
+        // Read all lines
+        const lines = fs.readFileSync(filename, 'utf8').split('\n');
+        const metadata = {};
+        for (const line of lines) {
+            const parts = line.trim().match(/^\[(\w+):(.*)\]$/);
+            if (parts && isNaN(parts[1])) {
+                metadata[parts[1]] = parts[2];
+            }
+        }
+        return metadata;
+    }
+
+    static compareMetadata(existing, proposed) {
+        let renew = false;
+        if (existing.ar != proposed.ar) { renew = true; }   // Artist changed
+        if (existing.ti != proposed.ti) { renew = true; }   // Title changed
+        if (existing.re != proposed.re) { renew = true; }   // Software changed
+        if (parseFloat(existing.ve) < parseFloat(proposed.ve)) { renew = true; }    // Newer version
+        // console.log('EXISTING: ' + JSON.stringify(existing));
+        // console.log('PROPOSED: ' + JSON.stringify(proposed));
+        // console.log('==> ' + renew);
+        return renew;
+    }
+
     createLrc(options) {
         const lines = [];
         options = Object.assign({
             wordStarts: true,   // false=none, true=all, 1=first only
             wordEnds: true,     // false=none, true=all, 1=last only
+            lyricsVersion: null,
         }, options);
         /*
             ti 	Title of the song
@@ -169,24 +222,13 @@ export class CdgLyrics {
             return (Math.sign(time) < 0 ? '-' : '') + Math.floor(Math.abs(time) / 60).toString().padStart(2, '0') + ':' + (Math.abs(time) - (Math.floor(Math.abs(time) / 60) * 60)).toFixed(2).padStart(5, '0');
         }
 
-        if (this.filename) {
-            let title = this.filename.trim();
-            title = title.replace(/^[A-Z]{2,5}\d{3,5} - /, '');  // Remove initial track ID
-            title = title.replaceAll(/- \d+ -/g, '-');           // Remove track number between artist and title
-            let artist = null;
-            const titleParts = title.split(' - ');
-            if (titleParts.length > 1) {
-                artist = titleParts.shift().trim();
-                title = titleParts.join(' - ');
-            }
-            
-            //lines.push('[#:filename:' + this.filename + ']')
-            if (artist != null) { lines.push('[ar:' + artist + ']') }
-            lines.push('[ti:' + title + ']')
-        }
+        const metadata = CdgLyrics.createMetadata(this.filename, options);
+        if (metadata.ar) { lines.push('[ar:' + metadata.ar + ']') }
+        if (metadata.ti) { lines.push('[ti:' + metadata.ti + ']') }
+        if (metadata['#']) { lines.push('[#:' + metadata['#'] + ']') }
         lines.push('[length:' + (Math.floor(Math.round(this.lastTime) / 60)) + ':' + (Math.round(this.lastTime) % 60).toString().padStart(2, '0') + ']')
-        lines.push('[re:cadge]')
-        lines.push('[ve:0.0.1]')
+        if (metadata.re) { lines.push('[re:' + metadata.re + ']') }
+        if (metadata.ve) { lines.push('[ve:' + metadata.ve + ']') }
         lines.push('')
         for (const line of this.lines) {
             const lineParts = [];
