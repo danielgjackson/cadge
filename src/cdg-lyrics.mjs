@@ -189,7 +189,7 @@ export class CdgLyrics {
         if (existing.ar != proposed.ar) { renew = true; }   // Artist changed
         if (existing.ti != proposed.ti) { renew = true; }   // Title changed
         if (existing.re != proposed.re) { renew = true; }   // Software changed
-        if (parseFloat(existing.ve) < parseFloat(proposed.ve)) { renew = true; }    // Newer version
+        if (parseFloat(existing.ve) < parseFloat(proposed.ve) || !existing.ve && proposed.ve) { renew = true; }    // Newer version
         // console.log('EXISTING: ' + JSON.stringify(existing));
         // console.log('PROPOSED: ' + JSON.stringify(proposed));
         // console.log('==> ' + renew);
