@@ -8,7 +8,7 @@ import { CdgLyrics } from './cdg-lyrics.mjs';
 import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
 import { wordCorrections, letterCorrections } from './corrections.mjs';
-import { stdout } from 'node:process';
+import { detectSilence } from './detect-silence.mjs';
 
 async function runOnce(inputFile, options) {
     //console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
@@ -155,7 +155,21 @@ async function runOnce(inputFile, options) {
 
     // Output lyrics
     if (lrcFile != null || options.lyricsOutput) {
-        const lrcData = lyrics.createLrc(options.lrcOptions);
+        const extraMetadata = {};
+        if (options.scanAudio) {
+            const audioFile = inputFile.replace(/\.cdg$/i, '.mp3');
+            if (fs.existsSync(audioFile)) {
+                const detectSilenceOptions = {};
+                const silenceResults = await detectSilence(audioFile, detectSilenceOptions);
+                if (silenceResults.startSilenceDuration != null) {
+                    extraMetadata._start = CdgLyrics.formatTime(silenceResults.startSilenceDuration);
+                }
+                if (silenceResults.endSilenceFrom != null) {
+                    extraMetadata._end = CdgLyrics.formatTime(silenceResults.endSilenceFrom);
+                }
+            }
+        }
+        const lrcData = lyrics.createLrc(options.lrcOptions, extraMetadata);
         if (lrcFile != null) {
             fs.writeFileSync(lrcFile, lrcData);
         } else {
@@ -202,7 +216,7 @@ async function main(args) {
         lrcOptions: {
             wordStarts: true,       // false=none, true=all, 1=first only
             wordEnds: true,         // false=none, true=all, 1=last only
-            lyricsVersion: 1.0001,
+            lyricsVersion: 1.0002,
         },
         // Options to cdg-parser
         parserOptions: {
@@ -273,6 +287,8 @@ async function main(args) {
             options.rate = parseFloat(args[++i]);
         } else if (args[i] == '--lrc') {
             options.writeLrc = true;
+        } else if (args[i] == '--scan-audio') {
+            options.scanAudio = true;
         } else if (args[i] == '--overwrite') {
             options.overwrite = true;
         } else if (args[i] == '--overwrite-outdated') {

@@ -196,7 +196,11 @@ export class CdgLyrics {
         return renew;
     }
 
-    createLrc(options) {
+    static formatTime(time) { // "mm:ss.xx"
+        return (Math.sign(time) < 0 ? '-' : '') + Math.floor(Math.abs(time) / 60).toString().padStart(2, '0') + ':' + (Math.abs(time) - (Math.floor(Math.abs(time) / 60) * 60)).toFixed(2).padStart(5, '0');
+    }
+
+    createLrc(options, extraMetadata = null) {
         const lines = [];
         options = Object.assign({
             wordStarts: true,   // false=none, true=all, 1=first only
@@ -218,10 +222,6 @@ export class CdgLyrics {
         */
         // [COLOUR]0xFF66FF
 
-        const formatTime = (time) => { // "mm:ss.xx"
-            return (Math.sign(time) < 0 ? '-' : '') + Math.floor(Math.abs(time) / 60).toString().padStart(2, '0') + ':' + (Math.abs(time) - (Math.floor(Math.abs(time) / 60) * 60)).toFixed(2).padStart(5, '0');
-        }
-
         const metadata = CdgLyrics.createMetadata(this.filename, options);
         if (metadata.ar) { lines.push('[ar:' + metadata.ar + ']') }
         if (metadata.ti) { lines.push('[ti:' + metadata.ti + ']') }
@@ -229,33 +229,41 @@ export class CdgLyrics {
         lines.push('[length:' + (Math.floor(Math.round(this.lastTime) / 60)) + ':' + (Math.round(this.lastTime) % 60).toString().padStart(2, '0') + ']')
         if (metadata.re) { lines.push('[re:' + metadata.re + ']') }
         if (metadata.ve) { lines.push('[ve:' + metadata.ve + ']') }
+        if (extraMetadata) {
+            for (const key in extraMetadata) {
+                lines.push('[' + key + ':' + extraMetadata[key] + ']');
+            }
+        }
         lines.push('')
         for (const line of this.lines) {
             const lineParts = [];
             if (line.words && line.words.length > 0) {
                 for (let i = 0; i < line.words.length; i++) {
+                    let word = '';
                     // Word start time
                     if (options.wordStarts === true || (options.wordStarts === 1 && i == 0)) {
                         if (i < line.startTimings.length) {
-                            lineParts.push('<' + formatTime(line.startTimings[i]) + '>');
+                            word += '<' + CdgLyrics.formatTime(line.startTimings[i]) + '>';
                         }
                     }
                     // Word text
                     if (i < line.words.length) {
-                        lineParts.push(line.words[i].text);
+                        word += line.words[i].text;
                     }
                     // Word end time
                     if (options.wordEnds === true || (options.wordEnds === 1 && i >= line.words.length - 1)) {
                         if (i < line.endTimings.length) {
-                            lineParts.push('<' + formatTime(line.endTimings[i]) + '>');
+                            word += '<' + CdgLyrics.formatTime(line.endTimings[i]) + '>';
                         }
                     }
+
+                    lineParts.push(word);
                 }
                 const lineText = lineParts.join(' ');
-                lines.push('[' + formatTime(line.timeProgress) + '] ' + lineText);
+                lines.push('[' + CdgLyrics.formatTime(line.timeProgress) + '] ' + lineText);
             }
         }
-        return lines.join('\n');
+        return lines.join('\r\n');
     }
 
 }
