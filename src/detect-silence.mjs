@@ -33,7 +33,9 @@ export async function detectSilence(filename, options) {
     ffmpegOptions.push('-f', 'null');
     ffmpegOptions.push('-');
 
-    if (0) console.log(JSON.stringify([ffmpegPath, ffmpegOptions]));
+    if (options.verbose) {
+        console.error('SILENCE-COMMAND: ' + JSON.stringify([ffmpegPath, ffmpegOptions]));
+    }
 
     const ffmpeg = spawn(ffmpegPath, ffmpegOptions);
 
@@ -46,7 +48,16 @@ export async function detectSilence(filename, options) {
     });
     return new Promise((resolve, reject) => {
         ffmpeg.on('close', (code) => {
-            const output = outputParts.join('').split('\n');
+            if (options.verbose) {
+                console.error('SILENCE-RESULT: ' + code);
+            }
+            const rawOutput = outputParts.join('');
+            const output = rawOutput.split('\n');
+            if (options.verbose) {
+                console.error('SILENCE-OUTPUT: (' + output.length + ' lines)');
+                console.error(rawOutput);
+            }
+
             if (code !== 0) {
                 reject(new Error(`ffmpeg process exited with code ${code}`));
             } else {
@@ -110,17 +121,25 @@ export async function detectSilence(filename, options) {
                     console.error('WARNING: silence_start without silence_end');
                 }
 
-                if (silenceRegions.length > 0) {
-                    if (silenceRegions[0].start <= 0.1) {
-                        results.startSilenceFrom = parseFloat(silenceRegions[0].start.toFixed(2));
-                        results.startSilenceDuration = parseFloat(silenceRegions[0].end.toFixed(2));
+                if (options.verbose) {
+                    console.error('SILENCE-REGIONS: ' + JSON.stringify(silenceRegions, null, 2));
+                }
+
+                let offset = 0;
+                if (silenceRegions.length > offset) {
+                    if (silenceRegions[offset].start <= 0.1) {
+                        results.startSilenceFrom = parseFloat(silenceRegions[offset].start.toFixed(2));
+                        results.startSilenceDuration = parseFloat(silenceRegions[offset].end.toFixed(2));
+                        offset++;
                     }
                 }
 
-                if (silenceRegions.length > 1) {
-                    if (silenceRegions[silenceRegions.length - 1].end >= results.duration - 0.5) {
-                        results.endSilenceFrom = parseFloat(silenceRegions[silenceRegions.length - 1].start.toFixed(2));
-                        results.endSilenceDuration = parseFloat((silenceRegions[silenceRegions.length - 1].end - silenceRegions[silenceRegions.length - 1].start).toFixed(2));
+                if (silenceRegions.length > offset) {
+                    offset = silenceRegions.length - 1;
+                    if (silenceRegions[offset].end >= results.duration - 0.5) {
+                        results.endSilenceFrom = parseFloat(silenceRegions[offset].start.toFixed(2));
+                        results.endSilenceDuration = parseFloat((silenceRegions[offset].end - silenceRegions[offset].start).toFixed(2));
+                        offset++;
                     }
                 }
 
@@ -136,10 +155,22 @@ async function main(args) {
     let help = false;
     const options = {
         inputFile: null,
+        verbose: false,
+        //silenceThreshold: '-50',
+        //silenceDuration: 0.5,
+        //ffmpegPath: 'ffmpeg',
     };
     for (let i = 0; i < args.length; i++) {
         if (args[i] == '--help') {
             help = true;
+        } else if (args[i] == '--verbose') {
+            options.verbose = true;
+        } else if (args[i] == '--silence-threshold') {
+            options.silenceThreshold = parseFloat(args[++i]);
+        } else if (args[i] == '--silence-duration') {
+            options.silenceDuration = parseFloat(args[++i]);
+        } else if (args[i] == '--ffmpeg') {
+            options.ffmpegPath = args[++i];
         } else if (args[i].startsWith('-')) {
             console.error('ERROR: Unknown option: ' + args[i]);
             help = true;
