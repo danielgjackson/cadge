@@ -163,6 +163,7 @@ export const wordCorrections = {
     'lwon\'t': 'I won\'t',
     'ascummy': 'a scummy',
     'ascumbag': 'a scumbag',
+    'atrifle': 'a trifle',
     'Andl\'ve': 'And I\'ve',
     'seenhim': 'seen him',
     'lil': 'I\'ll',
