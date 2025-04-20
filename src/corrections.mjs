@@ -161,6 +161,8 @@ export const wordCorrections = {
     'Whenl': 'When I',
     'QOoh': 'Oooh',
     'lwon\'t': 'I won\'t',
+    'Onasilent': 'On a silent',
+    'aromantic': 'a romantic',
     'ascummy': 'a scummy',
     'ascumbag': 'a scumbag',
     'atrifle': 'a trifle',
