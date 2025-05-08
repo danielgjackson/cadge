@@ -20,6 +20,7 @@
         "Pels",
         "RRRRGG",
         "silencedetect",
+        "volumedetect",
         "wconf"
     ]
 }

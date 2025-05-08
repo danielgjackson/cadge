@@ -200,7 +200,7 @@ async function main(args) {
     return 0;
 }
 
-const runCli = (import.meta.url == new URL(`file:///${process.argv[1]}`).toString());
+const runCli = (import.meta.url.replace(/^file:\/+/, '/') == process.argv[1].replaceAll('\\', '/'));
 if (runCli) {
     process.exit(await main(process.argv.slice(2)));
 }

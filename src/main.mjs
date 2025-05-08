@@ -9,6 +9,7 @@ import { BitmapGenerate } from './bmp.mjs';
 import { renderAnsiImage } from './cli-image.mjs';
 import { wordCorrections, letterCorrections } from './corrections.mjs';
 import { detectSilence } from './detect-silence.mjs';
+import { detectVolume } from './detect-volume.mjs';
 
 async function runOnce(inputFile, options) {
     //console.log('Processing: ' + inputFile + ' -- ' + JSON.stringify(options));
@@ -159,6 +160,7 @@ async function runOnce(inputFile, options) {
         if (options.scanAudio) {
             const audioFile = inputFile.replace(/\.cdg$/i, '.mp3');
             if (fs.existsSync(audioFile)) {
+                // Detect silence
                 const detectSilenceOptions = {};
                 const silenceResults = await detectSilence(audioFile, detectSilenceOptions);
                 if (silenceResults.startSilenceDuration != null) {
@@ -166,6 +168,16 @@ async function runOnce(inputFile, options) {
                 }
                 if (silenceResults.endSilenceFrom != null) {
                     extraMetadata._end = CdgLyrics.formatTime(silenceResults.endSilenceFrom);
+                }
+
+                // Detect volume
+                const detectVolumeOptions = {};
+                const volumeResults = await detectVolume(audioFile, detectVolumeOptions);
+                if (volumeResults.maxVolume != null) {
+                    extraMetadata._max_volume = volumeResults.max_volume;
+                }
+                if (volumeResults.meanVolume != null) {
+                    extraMetadata._mean_volume = volumeResults.mean_volume;
                 }
             }
         }
