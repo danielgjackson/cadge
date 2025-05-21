@@ -146,3 +146,111 @@ export function renderAnsiImage(color, width, height, reset = false, rectangle =
 
     return displayParts.join('');
 }
+
+
+export function renderSixelImage(color, width, height, reset = false, rectangle = null, scale = 1) {
+    const LINE_HEIGHT = 6;
+    const displayParts = [];
+
+    if (rectangle == null || rectangle.x == null) {
+        rectangle = { x: 0, y: 0, width, height };
+    }
+    if (rectangle.y % LINE_HEIGHT) {
+        rectangle.height += rectangle.y % LINE_HEIGHT;
+        rectangle.y -= rectangle.y % LINE_HEIGHT;
+    }
+    if (rectangle.height % LINE_HEIGHT) {
+        rectangle.height += LINE_HEIGHT - (rectangle.y % LINE_HEIGHT);
+    }
+
+    // Calculate mapping to sixel color code
+    const toCode = {};
+    for (let y = rectangle.y; y < rectangle.y + rectangle.height; y++) {
+        for (let x = rectangle.x; x < rectangle.x + rectangle.width; x++) {
+            if (y >= height) continue;
+            const rgb = [color[(y * width + x) * 4 + 0], color[(y * width + x) * 4 + 1], color[(y * width + x) * 4 + 2]];
+            const r = Math.floor(100 * color[(y * width + x) * 4 + 0] / 255);
+            const g = Math.floor(100 * color[(y * width + x) * 4 + 1] / 255);
+            const b = Math.floor(100 * color[(y * width + x) * 4 + 2] / 255);
+            const code = `${r};${g};${b}`;
+            toCode[rgb] = code;
+        }
+    }
+    // Calculate unique color codes
+    const codeMap = {};
+    for (const c of Object.values(toCode)) {
+      codeMap[c] = true;
+    }
+    const codes = Object.keys(codeMap);
+
+    if (reset) { displayParts.push('\x1B[s'); } // Save cursor
+    //if (reset) { displayParts.push('\x1B7'); } // Save cursor
+
+    // Enter sixel mode
+    displayParts.push('\x1BP7;1q');    // 1:1 ratio, 0 pixels remain at current color
+    // Set color map
+    displayParts.push('#0;2;0;0;0');       // Background
+
+    // Skip lines to rectangle
+    const skip = Math.floor(rectangle.y / LINE_HEIGHT);
+    displayParts.push('-'.repeat(skip));
+
+    // Draw image
+    for (let y = rectangle.y * scale; y < (rectangle.y + rectangle.height) * scale; y += LINE_HEIGHT) {
+        if (y >= height * scale) continue;
+        let passCount = 0;
+        for (let pass of codes) {
+            // Start a pass in a specific color
+            const passStart = (passCount++ == 0 ? '' : '$') + '#' + 1 + ';2;' + pass;
+            let lastX = 0;
+            // Line data
+            for (let x = rectangle.x * scale; x < (rectangle.x + rectangle.width) * scale; x += scale) {
+                let value = 0;
+                for (let yy = 0; yy < LINE_HEIGHT; yy++) {
+                    const rgb = [
+                        color[(Math.floor((y + yy) / scale) * width + Math.floor(x / scale)) * 4 + 0], 
+                        color[(Math.floor((y + yy) / scale) * width + Math.floor(x / scale)) * 4 + 1], 
+                        color[(Math.floor((y + yy) / scale) * width + Math.floor(x / scale)) * 4 + 2],
+                    ];
+                    if (rgb == null) continue;
+                    const code = toCode[rgb]; // c[0], c[1], c[2]
+                    if (code == null) continue;
+                    if (code != pass) {
+                        // Not the current color
+                        continue;
+                    }
+                    value |= 1 << yy;
+                }
+                if (value > 0) {
+                  if (lastX == 0) {
+                    displayParts.push(passStart);
+                  }
+                  const gap = x - lastX;
+                  if (gap > 0) {
+                    // Gap of empty pixels to the current position
+                    if (gap <= 3) {
+                      displayParts.push('?'.repeat(gap));
+                    } else {
+                      displayParts.push('!' + gap + '?');
+                    }
+                  }
+                  const code = (scale > 3 ? '!' + scale : '') + String.fromCharCode(value + 63).repeat(scale <= 3 ? scale : 1);
+                  // Six pixels strip at 'scale' (repeated) width
+                  displayParts.push(code);
+                  lastX = x + scale;
+                }
+            }
+        }
+        // Next line
+        if (y + LINE_HEIGHT < (rectangle.y + rectangle.height) * scale) {
+            displayParts.push('-');
+        }
+    }
+    // Exit sixel mode
+    displayParts.push('\x1B\\');
+
+    if (reset) { displayParts.push('\x1B8'); } // Restore cursor
+    //if (reset) { displayParts.push('\x1B[u'); } // Restore cursor
+
+    return displayParts.join('');
+}

@@ -6,7 +6,7 @@ import { CdgParser } from './cdg-parser.mjs';
 import { CdgAnalyzer } from './cdg-analyzer.mjs';
 import { CdgLyrics } from './cdg-lyrics.mjs';
 import { BitmapGenerate } from './bmp.mjs';
-import { renderAnsiImage } from './cli-image.mjs';
+import { renderAnsiImage, renderSixelImage } from './cli-image.mjs';
 import { wordCorrections, letterCorrections } from './corrections.mjs';
 import { detectSilence } from './detect-silence.mjs';
 import { detectVolume } from './detect-volume.mjs';
@@ -109,7 +109,18 @@ async function runOnce(inputFile, options) {
                 } else {
                     buffer = parser.imageRender(changeTrackCli);
                 }
-                const text = renderAnsiImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
+                let text;
+                if (options.term == 'sixel') {
+                    if (true) {
+                        // Render full image
+                        text = renderSixelImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, null, 2);
+                    } else {
+                        // Partial updates
+                        text = renderSixelImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
+                    }
+                } else {
+                    text = renderAnsiImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
+                }
                 process.stdout.write(text);
                 changeTrackCli = {};
             }
@@ -130,7 +141,12 @@ async function runOnce(inputFile, options) {
                 for (const change of analyzerResult.changes) {
                     // action: 'group-text', groupId: group.id, srcRect, dimensions, buffer
                     if (change.action == 'group-text') {
-                        const text = renderAnsiImage(change.buffer, change.dimensions.width, change.dimensions.height, false);
+                        let text;
+                        if (options.term == 'sixel') {
+                            text = renderSixelImage(change.buffer, change.dimensions.width, change.dimensions.height, false);
+                        } else {
+                            text = renderAnsiImage(change.buffer, change.dimensions.width, change.dimensions.height, false);
+                        }
                         process.stdout.write(text);
                         delete change.buffer;
                         console.log('LYRIC: ' + change.ocrResult.allText);
@@ -256,6 +272,8 @@ async function main(args) {
             help = true;
         } else if (args[i] == '--term') {
             options.term = true;
+        } else if (args[i] == '--term:sixel') {
+            options.term = 'sixel';
         } else if (args[i] == '--verbose') {
             options.parserOptions.verbose = true;
         } else if (args[i] == '--lyrics-dump') {
