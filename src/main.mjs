@@ -6,7 +6,7 @@ import { CdgParser } from './cdg-parser.mjs';
 import { CdgAnalyzer } from './cdg-analyzer.mjs';
 import { CdgLyrics } from './cdg-lyrics.mjs';
 import { BitmapGenerate } from './bmp.mjs';
-import { renderAnsiImage, renderSixelImage } from './cli-image.mjs';
+import { renderAnsiImage, renderSixelImage, renderTerminalGraphicsProtocolImage } from './cli-image.mjs';
 import { wordCorrections, letterCorrections } from './corrections.mjs';
 import { detectSilence } from './detect-silence.mjs';
 import { detectVolume } from './detect-volume.mjs';
@@ -65,6 +65,7 @@ async function runOnce(inputFile, options) {
     let changeTrackCli = {};
     const considerPackets = 30;
     const startTime = Date.now();
+    let firstRender = true;
     while (true) {
         const stepResult = analyzer.step([changeTrackCli]);
 
@@ -111,18 +112,20 @@ async function runOnce(inputFile, options) {
                 }
                 let text;
                 if (options.term == 'sixel') {
-                    if (true) {
-                        // Render full image
-                        text = renderSixelImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, null, 2);
-                    } else {
-                        // Partial updates
-                        text = renderSixelImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
+                    const partial = false;
+                    text = renderSixelImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, partial ? changeTrackCli : null, options.scale);
+                } else if (options.term == 'tgp') {
+                    if (firstRender) {
+                        process.stdout.write('\x1B[H\x1B[2J'); // clear screen
                     }
+                    const partial = false;
+                    text = renderTerminalGraphicsProtocolImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, partial ? changeTrackCli : null, options.scale);
                 } else {
                     text = renderAnsiImage(buffer, CdgParser.CDG_WIDTH, CdgParser.CDG_HEIGHT, true, changeTrackCli);
                 }
                 process.stdout.write(text);
                 changeTrackCli = {};
+                firstRender = false;
             }
 
             const now = Date.now();
@@ -232,6 +235,7 @@ async function main(args) {
         // Terminal playback
         term: false,
         rate: 1,
+        scale: 2,
         // Output/restrict analysis
         analyzeDump: false,
         analyzeAfter: null,
@@ -274,6 +278,10 @@ async function main(args) {
             options.term = true;
         } else if (args[i] == '--term:sixel') {
             options.term = 'sixel';
+        } else if (args[i] == '--term:tgp') {
+            options.term = 'tgp';
+        } else if (args[i] == '--term-scale') {
+            options.scale = parseInt(args[++i]);
         } else if (args[i] == '--verbose') {
             options.parserOptions.verbose = true;
         } else if (args[i] == '--lyrics-dump') {

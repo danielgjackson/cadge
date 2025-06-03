@@ -254,3 +254,72 @@ export function renderSixelImage(color, width, height, reset = false, rectangle 
 
     return displayParts.join('');
 }
+
+
+// TGP - Terminal Graphics Protocol
+let tgpImageBuffer = null;        // Cached
+let tgpBase64Buffer = null;       // Cached
+export function renderTerminalGraphicsProtocolImage(color, width, height, reset = false, rectangle = null, scale = 1) {
+    const alpha = false;
+
+    if (rectangle == null || rectangle.x == null) {
+        rectangle = { x: 0, y: 0, width, height };
+    }
+
+    // Render scaled image
+    const tgpImageBufferSize = (width * scale) * (height * scale) * (alpha ? 4 : 3);
+    if (!tgpImageBuffer || tgpImageBuffer.byteLength < tgpImageBufferSize) {
+        tgpImageBuffer = new Uint8Array(tgpImageBufferSize);
+    }
+    for (let y = rectangle.y * scale; y < (rectangle.y + rectangle.height) * scale; y++) {
+        for (let x = rectangle.x * scale; x < (rectangle.x + rectangle.width) * scale; x++) {
+            const srcOfs = (Math.floor(y / scale) * width + Math.floor(x / scale)) * 4;
+            const dstOfs = (y * (width * scale) + x) * (alpha ? 4 : 3);
+            tgpImageBuffer[dstOfs + 0] = color[srcOfs + 0]; // r
+            tgpImageBuffer[dstOfs + 1] = color[srcOfs + 1]; // g
+            tgpImageBuffer[dstOfs + 2] = color[srcOfs + 2]; // b
+            if (alpha) tgpImageBuffer[dstOfs + 3] = color[srcOfs + 3];  // a
+        }
+    }
+
+    // Convert to base64 (TODO: Switch to use built-in functions in Node/Deno/etc.)
+    const tgpBase64BufferSize = Math.floor((tgpImageBufferSize + 2) / 3) * 4;
+    if (!tgpBase64Buffer || tgpBase64Buffer.length != tgpBase64BufferSize) {
+        tgpBase64Buffer = new Uint8Array(tgpBase64BufferSize);
+    }
+    // Manually encode to Base64
+    const base64Chars = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"].map(x => x.charCodeAt(0));
+    for (let i = 0; i < tgpImageBufferSize; i += 3) {
+        const value = (tgpImageBuffer[i] << 16) | (i + 1 < tgpImageBufferSize ? (tgpImageBuffer[i + 1] << 8) : 0) | (i + 2 < tgpImageBufferSize ? tgpImageBuffer[i + 2] : 0);
+        let ofs = Math.floor(i / 3) * 4;
+        tgpBase64Buffer[ofs + 0] = base64Chars[(value >> 18) & 0x3f];
+        tgpBase64Buffer[ofs + 1] = base64Chars[(value >> 12) & 0x3f];
+        tgpBase64Buffer[ofs + 2] = (i + 1 < tgpImageBufferSize) ? base64Chars[(value >> 6) & 0x3f] : '=';
+        tgpBase64Buffer[ofs + 3] = (i + 2 < tgpImageBufferSize) ? base64Chars[value & 0x3f] : '=';
+    }
+
+    // Convert tgpBase64Buffer to a string from ASCII
+    const encodedString = (new TextDecoder()).decode(tgpBase64Buffer);
+
+    // Output
+    const parts = [];
+    //if (reset) { parts.push('\x1B[s'); } // Save cursor
+    //if (reset) { parts.push('\x1B7'); } // Save cursor
+
+    // Chunked image output
+    const MAX_CHUNK_SIZE = 4096;
+    for (let i = 0; i < encodedString.length; i += MAX_CHUNK_SIZE) {
+        const chunk = encodedString.slice(i, i + MAX_CHUNK_SIZE);
+        // action transmit and display (a=T), direct transfer (t=d), uncompressed (o=), 3/4 bytes per pixel (f=24/32 bits per pixel), no responses at all (q=2)
+        // do not move cursor (C=1)
+        const doNotMove = (true && reset) ? ',C=1' : '';
+        const initialControls = (i == 0) ? `a=T,f=${alpha ? 32 : 24},s=${width * scale},v=${height * scale},t=d,q=2,` : '';
+        const nonTerminal = (i + MAX_CHUNK_SIZE < encodedString.length) ? 1 : 0;
+        parts.push(`\x1B_G${initialControls}m=${nonTerminal}${doNotMove};${chunk}\x1B\\`);
+    }
+
+    //if (reset) { parts.push('\x1B8'); } // Restore cursor
+    //if (reset) { parts.push('\x1B[u'); } // Restore cursor
+
+    return parts.join('');
+}
