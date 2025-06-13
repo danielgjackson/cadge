@@ -83,7 +83,7 @@ export const wordCorrections = {
     'ete': '****',
     'eee': '****',
     'eee]': '****',
-    
+    'ee': '**',
     'eeee': '****',
     '@@¢e': '****',
     '«eee': '****',
@@ -92,6 +92,7 @@ export const wordCorrections = {
     '*ee*e': '****',
     'seeeceeeeeeeseeeees': '*******************',
     '**': '* *',
+    '©': '*',
 
     'y>eoelfl': '>>>> If',
     '>>': '> >',
